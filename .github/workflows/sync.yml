@@ -49,6 +49,7 @@ jobs:
           ./ructmirror verify 2>&1 | tee verify.log
           echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
       - name: Commit and push whatever was observed
+        id: publish
         if: always()
         env:
           TZ: UTC
@@ -89,16 +90,19 @@ jobs:
         env:
           SYNC_CODE: ${{ steps.sync.outputs.code }}
           VERIFY_CODE: ${{ steps.verify.outputs.code }}
+          PUBLISH: ${{ steps.publish.outcome }}
         run: |
           [ -n "$HC_PING_URL" ] || exit 0
           # healthchecks reads the exit status from the URL: 0 is success,
-          # anything else is a failure. Pass the worst of the two steps and
-          # 3 when a step never produced a code (the job itself broke).
+          # anything else is a failure. Pass the worst of the two steps,
+          # 3 when a step never produced a code (the job itself broke) and
+          # 4 when everything verified but the commit could not be pushed.
           code="${SYNC_CODE:-3}"
           if [ "${VERIFY_CODE:-3}" != "0" ] && [ "$code" != "2" ]; then code="${VERIFY_CODE:-3}"; fi
+          if [ "$code" = "0" ] && [ "$PUBLISH" != "success" ]; then code=4; fi
           {
             echo "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo "sync exit code: ${SYNC_CODE:-none}, verify exit code: ${VERIFY_CODE:-none}"
+            echo "sync exit code: ${SYNC_CODE:-none}, verify exit code: ${VERIFY_CODE:-none}, publish: ${PUBLISH:-none}"
             echo; echo "== sync"; grep -v -E ' 0 chunk\(s\), new STH: false$' sync.log 2>/dev/null | tail -n 40
             echo; echo "== verify"; grep -v ': ok, ' verify.log 2>/dev/null | tail -n 20
           } > hc-body.txt

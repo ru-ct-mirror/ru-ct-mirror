@@ -51,7 +51,8 @@ never happens is noticed as well.
 3. That is all. The workflow reports `/start` at the beginning and
    `/<exit status>` at the end: `0` for a clean run, `1` for a sync error
    (a log was unreachable), `2` for a verification failure, `3` when a step
-   never produced a status because the job itself broke. The request body,
+   never produced a status because the job itself broke, `4` when everything
+   verified but the commit could not be pushed. The request body,
    visible in the check's log on healthchecks.io, holds the run URL and the
    interesting lines of the sync and verify output.
 
