@@ -32,7 +32,9 @@ a GitHub Actions job running outside Russia:
 7. commits the result.
 
 If any check fails the evidence (both STHs, the proof, the entries that were
-served) is committed under `alerts/` and an issue is opened. The mirror cannot
+served) is committed under `alerts/` and an issue titled **Verification
+failure** is opened. A log that is merely unreachable opens a **Sync error**
+issue instead, so the two never look alike. The mirror cannot
 stop a rogue certificate from being accepted, but it makes any tampering with
 the logs detectable after the fact by anyone holding a clone.
 

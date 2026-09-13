@@ -4,6 +4,10 @@
 //	ructmirror verify [-root DIR] [-only operator/shard]
 //
 // DIR is the repository root: it must contain logs.json, roots/ and data/.
+//
+// Exit status: 0 when everything verified, 2 when a log or the log list
+// failed verification (evidence was written), 1 for any other error such as
+// an unreachable log.
 package main
 
 import (
@@ -52,15 +56,19 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	var failures int
+	var failures, alerts int
 	switch os.Args[1] {
 	case "sync":
 		cl, err := ctclient.New(filepath.Join(*root, "roots"))
 		fatal(err)
 		if *only == "" {
-			if err := snapshotLogList(ctx, cl, cfg, *root); err != nil {
+			drift, err := snapshotLogList(ctx, cl, cfg, *root)
+			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				failures++
+			}
+			if drift {
+				alerts++
 			}
 		}
 		for _, l := range logs {
@@ -72,7 +80,12 @@ func main() {
 			res, err := mirror.Sync(ctx, cl, l, st, mirror.Options{Batch: *batch, Log: os.Stderr})
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
-				failures++
+				var a *mirror.Alert
+				if errors.As(err, &a) {
+					alerts++
+				} else {
+					failures++
+				}
 				continue
 			}
 			fmt.Fprintf(os.Stderr, "%s: ok, size %d -> %d, %d chunk(s), new STH: %v\n", l.Name(), res.OldSize, res.NewSize, res.ChunksWritten, res.NewSTH)
@@ -87,7 +100,7 @@ func main() {
 			fatal(err)
 			if err := mirror.Verify(l, st); err != nil {
 				fmt.Fprintln(os.Stderr, "FAIL", err)
-				failures++
+				alerts++
 				continue
 			}
 			state, _ := st.LoadState()
@@ -96,37 +109,43 @@ func main() {
 	default:
 		usage()
 	}
-	if failures > 0 {
-		fmt.Fprintf(os.Stderr, "%d failure(s)\n", failures)
+	switch {
+	case alerts > 0:
+		fmt.Fprintf(os.Stderr, "%d verification failure(s), %d other error(s)\n", alerts, failures)
+		os.Exit(2)
+	case failures > 0:
+		fmt.Fprintf(os.Stderr, "%d error(s)\n", failures)
 		os.Exit(1)
 	}
 }
 
-// snapshotLogList downloads ctlog.json into loglist/ and reports drift from logs.json.
-func snapshotLogList(ctx context.Context, cl *ctclient.Client, cfg *config.File, root string) error {
+// snapshotLogList downloads ctlog.json into loglist/ and reports drift from
+// logs.json. drift is true when the published list disagrees with logs.json,
+// which is a verification failure rather than an operational error.
+func snapshotLogList(ctx context.Context, cl *ctclient.Client, cfg *config.File, root string) (drift bool, err error) {
 	if cfg.LogListURL == "" {
-		return nil
+		return false, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	b, err := cl.GetJSON(ctx, cfg.LogListURL)
 	if err != nil {
-		return fmt.Errorf("log list: %w", err)
+		return false, fmt.Errorf("log list: %w", err)
 	}
 	dir := filepath.Join(root, "loglist")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+		return false, err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "ctlog.json"), b, 0o644); err != nil {
-		return err
+		return false, err
 	}
 	d, err := loglist.Compare(b, cfg)
 	if err != nil {
-		return fmt.Errorf("log list: %w", err)
+		return false, fmt.Errorf("log list: %w", err)
 	}
 	if d.Empty() {
 		fmt.Fprintln(os.Stderr, "log list: ctlog.json agrees with logs.json")
-		return nil
+		return false, nil
 	}
 	var errs []error
 	for _, u := range d.Unknown {
@@ -135,7 +154,7 @@ func snapshotLogList(ctx context.Context, cl *ctclient.Client, cfg *config.File,
 	for _, c := range d.Changed {
 		errs = append(errs, fmt.Errorf("ALERT log list: key changed: %s", c))
 	}
-	return errors.Join(errs...)
+	return true, errors.Join(errs...)
 }
 
 func usage() {

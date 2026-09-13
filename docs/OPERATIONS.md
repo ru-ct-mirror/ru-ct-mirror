@@ -35,6 +35,16 @@ from a personal account is recorded publicly in the repository's Activity
 view and the Events API, so use a dedicated machine account with its own SSH
 key (`IdentitiesOnly yes` in `~/.ssh/config`) for any manual push.
 
+## Two kinds of issues
+
+- **Verification failure <date>**: a log or the log list failed a
+  cryptographic check (`ructmirror` exited 2, or offline `verify` failed).
+  Evidence is committed under `alerts/`. This is the one that matters.
+- **Sync error <date>**: an operational problem, typically a log that could
+  not be reached or returned garbage (`ructmirror` exited 1). Nothing was
+  verified wrong, but the mirror is blind until it clears. Persisting for more
+  than a day deserves a look: a log that went away is itself a finding.
+
 ## Reading a verification failure
 
 `data/<operator>/<shard>/alerts/<time>-<kind>.json` holds everything the run
