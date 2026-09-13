@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -28,7 +29,8 @@ type State struct {
 	TreeSize     uint64 `json:"tree_size"`
 	RootHash     string `json:"root_hash"`
 	STHTimestamp uint64 `json:"sth_timestamp"`
-	Updated      string `json:"updated"`
+	// Updated is when the verified tree last changed, not when it was last checked.
+	Updated string `json:"updated"`
 }
 
 // STHRecord is one line of sth.jsonl: the raw get-sth response plus when we saw it.
@@ -64,17 +66,20 @@ func Open(dir string) (*Store, error) {
 	return &Store{Dir: dir}, nil
 }
 
-// LoadState returns the state, or a zero state when none was saved yet.
-func (s *Store) LoadState() (State, error) {
-	var st State
+// LoadState returns the saved state. found is false when the shard has never
+// completed a verified sync; the returned state is then zero.
+func (s *Store) LoadState() (st State, found bool, err error) {
 	b, err := os.ReadFile(filepath.Join(s.Dir, "state.json"))
 	if errors.Is(err, fs.ErrNotExist) {
-		return st, nil
+		return st, false, nil
 	}
 	if err != nil {
-		return st, err
+		return st, false, err
 	}
-	return st, json.Unmarshal(b, &st)
+	if err := json.Unmarshal(b, &st); err != nil {
+		return st, false, fmt.Errorf("state.json: %w", err)
+	}
+	return st, true, nil
 }
 
 // SaveState writes state.json atomically.
@@ -234,17 +239,42 @@ func readChunk(c Chunk, fn func(Entry) error) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", c.Path, err)
 	}
+	// Decode until an explicit io.EOF: json.Decoder.More reports false on any
+	// reader error too, which would hide a corrupt or truncated gzip trailer.
 	dec := json.NewDecoder(bufio.NewReaderSize(gz, 1<<20))
-	for dec.More() {
+	for {
 		var e Entry
-		if err := dec.Decode(&e); err != nil {
+		err := dec.Decode(&e)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		if err != nil {
 			return fmt.Errorf("%s: %w", c.Path, err)
 		}
 		if err := fn(e); err != nil {
 			return err
 		}
 	}
-	return nil
+}
+
+// PruneBeyond deletes chunks that start at or after verified, i.e. data left
+// behind by a run that was interrupted before state.json was updated. It
+// returns the removed paths.
+func (s *Store) PruneBeyond(verified uint64) ([]string, error) {
+	chunks, err := s.Chunks()
+	if err != nil {
+		return nil, err
+	}
+	var removed []string
+	for _, c := range chunks {
+		if c.Start >= verified {
+			if err := os.Remove(c.Path); err != nil {
+				return removed, err
+			}
+			removed = append(removed, c.Path)
+		}
+	}
+	return removed, nil
 }
 
 // WriteAlert stores a verification failure as evidence and returns its path.

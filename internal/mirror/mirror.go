@@ -72,11 +72,19 @@ func Sync(ctx context.Context, cl *ctclient.Client, l config.Log, st *store.Stor
 	now := opt.Now()
 	logf := func(format string, a ...any) { fmt.Fprintf(opt.Log, l.Name()+": "+format+"\n", a...) }
 
-	state, err := st.LoadState()
+	state, found, err := st.LoadState()
 	if err != nil {
 		return res, err
 	}
 	res.OldSize = state.TreeSize
+
+	// A run interrupted between WriteChunk and SaveState leaves unverified
+	// chunks behind; drop them so the range is fetched and verified afresh.
+	if pruned, err := st.PruneBeyond(state.TreeSize); err != nil {
+		return res, err
+	} else if len(pruned) > 0 {
+		logf("removed %d unverified chunk(s) left by an interrupted run", len(pruned))
+	}
 
 	raw, sth, err := cl.GetSTH(ctx, l)
 	if err != nil {
@@ -94,17 +102,13 @@ func Sync(ctx context.Context, cl *ctclient.Client, l config.Log, st *store.Stor
 	}
 	res.NewSTH = wrote
 
-	if sth.TreeSize < state.TreeSize {
+	if found && sth.TreeSize < state.TreeSize {
 		return res, alert(st, l, "tree-shrunk", now, map[string]any{"sth": raw, "state": state},
 			fmt.Sprintf("log reports tree_size %d, we already verified %d", sth.TreeSize, state.TreeSize))
 	}
-	if sth.TreeSize == state.TreeSize {
-		if store.B64(sth.SHA256RootHash[:]) != state.RootHash {
-			return res, alert(st, l, "same-size-different-root", now, map[string]any{"sth": raw, "state": state},
-				fmt.Sprintf("tree_size %d has root %s, we verified %s", sth.TreeSize, store.B64(sth.SHA256RootHash[:]), state.RootHash))
-		}
-		res.NewSize = state.TreeSize
-		return res, nil
+	if found && sth.TreeSize == state.TreeSize && store.B64(sth.SHA256RootHash[:]) != state.RootHash {
+		return res, alert(st, l, "same-size-different-root", now, map[string]any{"sth": raw, "state": state},
+			fmt.Sprintf("tree_size %d has root %s, we verified %s", sth.TreeSize, store.B64(sth.SHA256RootHash[:]), state.RootHash))
 	}
 
 	// Fetch [state.TreeSize, sth.TreeSize) into chunk files.
@@ -131,7 +135,9 @@ func Sync(ctx context.Context, cl *ctclient.Client, l config.Log, st *store.Stor
 	}
 	res.ChunksWritten = len(written)
 
-	// Recompute the Merkle root over everything on disk and compare with the STH.
+	// Recompute the Merkle root over everything on disk and compare with the
+	// STH. This runs even when nothing was fetched, so a chunk that went
+	// missing or corrupt since the last run is caught by every sync.
 	root, n, err := LocalRoot(st)
 	if err != nil {
 		return res, rollback(st, written, err)
@@ -141,13 +147,17 @@ func Sync(ctx context.Context, cl *ctclient.Client, l config.Log, st *store.Stor
 	}
 	if !bytes.Equal(root, sth.SHA256RootHash[:]) {
 		paths := quarantine(st, written, now)
+		what := "entries served"
+		if len(written) == 0 {
+			what = "entries on disk"
+		}
 		return res, alert(st, l, "root-mismatch", now, map[string]any{
 			"sth": raw, "computed_root": store.B64(root), "quarantined_chunks": paths, "state": state,
-		}, fmt.Sprintf("entries served for tree_size %d hash to %s, STH says %s", sth.TreeSize, store.B64(root), store.B64(sth.SHA256RootHash[:])))
+		}, fmt.Sprintf("%s for tree_size %d hash to %s, STH says %s", what, sth.TreeSize, store.B64(root), store.B64(sth.SHA256RootHash[:])))
 	}
 
 	// Ask the log to prove the new tree extends the one we verified before.
-	if state.TreeSize > 0 {
+	if found && state.TreeSize > 0 && state.TreeSize < sth.TreeSize {
 		pf, err := cl.GetConsistency(ctx, l, state.TreeSize, sth.TreeSize)
 		if err != nil {
 			return res, rollback(st, written, err)
@@ -164,25 +174,33 @@ func Sync(ctx context.Context, cl *ctclient.Client, l config.Log, st *store.Stor
 		}
 	}
 
-	state = store.State{
-		TreeSize:     sth.TreeSize,
-		RootHash:     store.B64(sth.SHA256RootHash[:]),
-		STHTimestamp: sth.Timestamp,
-		Updated:      now.UTC().Format(time.RFC3339),
-	}
-	if err := st.SaveState(state); err != nil {
-		return res, err
+	// Rewrite state.json only when the verified tree actually moved, so an
+	// idle run leaves the working tree untouched and nothing gets committed.
+	if !found || state.TreeSize != sth.TreeSize || state.RootHash != store.B64(sth.SHA256RootHash[:]) {
+		state = store.State{
+			TreeSize:     sth.TreeSize,
+			RootHash:     store.B64(sth.SHA256RootHash[:]),
+			STHTimestamp: sth.Timestamp,
+			Updated:      now.UTC().Format(time.RFC3339),
+		}
+		if err := st.SaveState(state); err != nil {
+			return res, err
+		}
 	}
 	res.NewSize = sth.TreeSize
 	return res, nil
 }
 
 // Verify recomputes the root from the stored entries and checks it against
-// state.json and the last recorded STH. It needs no network.
+// state.json and the last recorded STH. It needs no network. A shard that
+// never completed a sync fails: absence of evidence is not evidence.
 func Verify(l config.Log, st *store.Store) error {
-	state, err := st.LoadState()
+	state, found, err := st.LoadState()
 	if err != nil {
 		return err
+	}
+	if !found {
+		return fmt.Errorf("%s: no state.json, the shard was never synced", l.Name())
 	}
 	root, n, err := LocalRoot(st)
 	if err != nil {
@@ -190,9 +208,6 @@ func Verify(l config.Log, st *store.Store) error {
 	}
 	if n != state.TreeSize {
 		return fmt.Errorf("%s: %d entries on disk, state.json says %d", l.Name(), n, state.TreeSize)
-	}
-	if n == 0 {
-		return nil
 	}
 	if got := store.B64(root); got != state.RootHash {
 		return fmt.Errorf("%s: entries hash to %s, state.json says %s", l.Name(), got, state.RootHash)

@@ -75,14 +75,14 @@ func TestStateAndAlert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st, err := s.LoadState()
-	if err != nil || st.TreeSize != 0 {
+	st, found, err := s.LoadState()
+	if err != nil || found || st.TreeSize != 0 {
 		t.Fatalf("empty state: %+v %v", st, err)
 	}
 	if err := s.SaveState(State{TreeSize: 7, RootHash: "abc"}); err != nil {
 		t.Fatal(err)
 	}
-	st, _ = s.LoadState()
+	st, _, _ = s.LoadState()
 	if st.TreeSize != 7 || st.RootHash != "abc" {
 		t.Fatalf("state round trip: %+v", st)
 	}
@@ -95,5 +95,50 @@ func TestStateAndAlert(t *testing.T) {
 	}
 	if _, err := os.Stat(p); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestTruncatedGzipTrailerIsAnError(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := s.WriteChunk(0, []ct.LeafEntry{{LeafInput: []byte("a")}, {LeafInput: []byte("b")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(c.Path)
+	// Strip the 8-byte gzip trailer (CRC32 + ISIZE): every record is still
+	// readable, only the integrity check is gone.
+	os.WriteFile(c.Path, b[:len(b)-8], 0o644)
+	n, err := s.ForEachEntry(func(Entry) error { return nil })
+	if err == nil {
+		t.Fatalf("truncated trailer went unnoticed after %d entries", n)
+	}
+	// Flip a byte in the middle: CRC mismatch must surface too.
+	b2 := append([]byte(nil), b...)
+	b2[len(b2)-12] ^= 0xff
+	os.WriteFile(c.Path, b2, 0o644)
+	if _, err := s.ForEachEntry(func(Entry) error { return nil }); err == nil {
+		t.Fatal("corrupted gzip body went unnoticed")
+	}
+}
+
+func TestPruneBeyond(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := []ct.LeafEntry{{LeafInput: []byte("a")}}
+	s.WriteChunk(0, e)
+	s.WriteChunk(1, e)
+	s.WriteChunk(2, e)
+	removed, err := s.PruneBeyond(2)
+	if err != nil || len(removed) != 1 {
+		t.Fatalf("removed=%v err=%v", removed, err)
+	}
+	chunks, _ := s.Chunks()
+	if len(chunks) != 2 || chunks[1].End != 1 {
+		t.Fatalf("chunks after prune: %+v", chunks)
 	}
 }

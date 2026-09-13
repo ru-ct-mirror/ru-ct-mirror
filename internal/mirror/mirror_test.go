@@ -257,7 +257,7 @@ func TestSyncDetectsWrongRoot(t *testing.T) {
 	if len(q) != 1 {
 		t.Fatalf("want 1 quarantined chunk, got %d", len(q))
 	}
-	state, _ := st.LoadState()
+	state, _, _ := st.LoadState()
 	if state.TreeSize != 0 {
 		t.Fatal("state must not advance on a failed verification")
 	}
@@ -277,7 +277,7 @@ func TestSyncDetectsRewrittenHistory(t *testing.T) {
 	if !errorsAs(err, &a) || a.Kind != "root-mismatch" {
 		t.Fatalf("want root-mismatch alert, got %v", err)
 	}
-	state, _ := st.LoadState()
+	state, _, _ := st.LoadState()
 	if state.TreeSize != 4 {
 		t.Fatal("state must keep the last verified tree")
 	}
@@ -299,7 +299,7 @@ func TestSyncDetectsBadConsistencyProof(t *testing.T) {
 	if !errorsAs(err, &a) || a.Kind != "inconsistent" {
 		t.Fatalf("want inconsistent alert, got %v", err)
 	}
-	state, _ := st.LoadState()
+	state, _, _ := st.LoadState()
 	if state.TreeSize != 4 {
 		t.Fatal("state must keep the last verified tree")
 	}
@@ -369,3 +369,107 @@ Wf86aX6PepsntZv2GYlA5UpabfT2EZICICpJ5h/iI+i341gBmLiAFQOyTDT+/wQc
 6MF9+Yw1Yy0t
 -----END CERTIFICATE-----
 `
+
+// Review findings: each of the following tests pins one of them.
+
+func TestSyncRecoversFromInterruptedRun(t *testing.T) {
+	f, _, l, cl, st := setup(t, 4)
+	if _, err := Sync(t.Context(), cl, l, st, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a run killed after WriteChunk but before SaveState.
+	f.leaves = append(f.leaves, []byte("a"), []byte("b"))
+	if _, err := st.WriteChunk(4, []ct.LeafEntry{{LeafInput: []byte("stale")}, {LeafInput: []byte("stale2")}}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Sync(t.Context(), cl, l, st, Options{})
+	if err != nil {
+		t.Fatalf("sync must recover from an orphan chunk: %v", err)
+	}
+	if res.NewSize != 6 || res.ChunksWritten != 1 {
+		t.Fatalf("unexpected result %+v", res)
+	}
+	if err := Verify(l, st); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVerifyRejectsNeverSyncedShard(t *testing.T) {
+	_, _, l, _, st := setup(t, 0)
+	if err := Verify(l, st); err == nil || !strings.Contains(err.Error(), "never synced") {
+		t.Fatalf("verify must fail without state.json, got %v", err)
+	}
+}
+
+func TestSyncAcceptsEmptyLogThenVerifies(t *testing.T) {
+	f, _, l, cl, st := setup(t, 0)
+	res, err := Sync(t.Context(), cl, l, st, Options{})
+	if err != nil {
+		t.Fatalf("empty log must sync cleanly: %v", err)
+	}
+	if res.NewSize != 0 || !res.NewSTH {
+		t.Fatalf("unexpected result %+v", res)
+	}
+	if err := Verify(l, st); err != nil {
+		t.Fatal(err)
+	}
+	// Second run with the log still empty: no equivocation alert.
+	if _, err := Sync(t.Context(), cl, l, st, Options{}); err != nil {
+		t.Fatalf("second empty sync: %v", err)
+	}
+	f.leaves = append(f.leaves, []byte("first"))
+	res, err = Sync(t.Context(), cl, l, st, Options{})
+	if err != nil || res.NewSize != 1 {
+		t.Fatalf("growth from empty: %+v %v", res, err)
+	}
+}
+
+func TestSyncChecksDiskEvenWhenLogUnchanged(t *testing.T) {
+	_, _, l, cl, st := setup(t, 5)
+	if _, err := Sync(t.Context(), cl, l, st, Options{ChunkSize: 2}); err != nil {
+		t.Fatal(err)
+	}
+	chunks, _ := st.Chunks()
+	os.Remove(chunks[1].Path)
+	_, err := Sync(t.Context(), cl, l, st, Options{ChunkSize: 2})
+	if err == nil || !strings.Contains(err.Error(), "gap in entries") {
+		t.Fatalf("missing chunk must be reported on an idle sync, got %v", err)
+	}
+	// Corrupt content with the right shape must trip the root check.
+	if _, err := st.WriteChunk(chunks[1].Start, []ct.LeafEntry{{LeafInput: []byte("x")}, {LeafInput: []byte("y")}}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Sync(t.Context(), cl, l, st, Options{ChunkSize: 2})
+	var a *Alert
+	if !errorsAs(err, &a) || a.Kind != "root-mismatch" || !strings.Contains(a.Msg, "on disk") {
+		t.Fatalf("corrupt chunk must raise root-mismatch on an idle sync, got %v", err)
+	}
+}
+
+func TestIdleSyncTouchesNoFiles(t *testing.T) {
+	_, _, l, cl, st := setup(t, 3)
+	if _, err := Sync(t.Context(), cl, l, st, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	before := snapshot(t, st.Dir)
+	if _, err := Sync(t.Context(), cl, l, st, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if after := snapshot(t, st.Dir); after != before {
+		t.Fatalf("idle sync changed files:\n%s\n---\n%s", before, after)
+	}
+}
+
+func snapshot(t *testing.T, dir string) string {
+	t.Helper()
+	var sb strings.Builder
+	filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err == nil && !info.IsDir() {
+			b, _ := os.ReadFile(p)
+			sum := sha256.Sum256(b)
+			sb.WriteString(p + " " + base64.StdEncoding.EncodeToString(sum[:]) + "\n")
+		}
+		return nil
+	})
+	return sb.String()
+}

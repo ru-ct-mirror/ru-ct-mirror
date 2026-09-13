@@ -103,7 +103,7 @@ func main() {
 				alerts++
 				continue
 			}
-			state, _ := st.LoadState()
+			state, _, _ := st.LoadState()
 			fmt.Fprintf(os.Stderr, "%s: ok, %d entries, root %s\n", l.Name(), state.TreeSize, state.RootHash)
 		}
 	default:
