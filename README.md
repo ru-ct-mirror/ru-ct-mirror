@@ -77,6 +77,18 @@ To compare the mirror with what the logs say right now, run
 `go run ./cmd/ructmirror sync` in the clone; it performs the same checks as
 the scheduled job.
 
+## See what has been issued
+
+```
+go run ./cmd/ructmirror domains -active
+```
+
+prints one line per DNS name that appears in a stored certificate (SAN or a
+host-like CN): how many log entries mention it, how many of those are
+precertificates, when it was first logged, the latest expiry and the issuing
+CA. Drop `-active` to include expired names. Output is tab-separated for
+`sort`, `grep` and friends. This reads only the local files.
+
 ## Run your own witness
 
 Fork the repository and enable GitHub Actions on the fork, or run

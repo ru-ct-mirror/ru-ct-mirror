@@ -1,7 +1,8 @@
 // Command ructmirror mirrors and verifies the Russian national CT logs.
 //
-//	ructmirror sync   [-root DIR] [-only operator/shard] [-batch N]
-//	ructmirror verify [-root DIR] [-only operator/shard]
+//	ructmirror sync    [-root DIR] [-only operator/shard] [-batch N]
+//	ructmirror verify  [-root DIR] [-only operator/shard]
+//	ructmirror domains [-root DIR] [-only operator/shard] [-active]
 //
 // DIR is the repository root: it must contain logs.json, roots/ and data/.
 //
@@ -18,6 +19,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -36,6 +39,7 @@ func main() {
 	root := fs.String("root", ".", "repository root (contains logs.json, roots/, data/)")
 	only := fs.String("only", "", "limit to one log, as operator/shard")
 	batch := fs.Uint64("batch", 256, "entries per get-entries request")
+	active := fs.Bool("active", false, "domains: only names with a certificate that has not expired")
 	fs.Parse(os.Args[2:])
 
 	cfg, err := config.Load(filepath.Join(*root, "logs.json"))
@@ -106,6 +110,33 @@ func main() {
 			state, _, _ := st.LoadState()
 			fmt.Fprintf(os.Stderr, "%s: ok, %d entries, root %s\n", l.Name(), state.TreeSize, state.RootHash)
 		}
+	case "domains":
+		acc := map[string]*mirror.DomainStat{}
+		for _, l := range logs {
+			dir := filepath.Join(*root, "data", l.Operator, l.Shard)
+			if _, err := os.Stat(dir); os.IsNotExist(err) {
+				continue
+			}
+			st, err := store.Open(dir)
+			fatal(err)
+			if _, err := mirror.Domains(st, acc); err != nil {
+				fatal(fmt.Errorf("%s: %w", l.Name(), err))
+			}
+		}
+		now := time.Now()
+		fmt.Println("domain\tcerts\tprecerts\tfirst_seen\tlatest_not_after\tissuers")
+		for _, d := range mirror.SortedDomains(acc) {
+			if *active && d.NotAfter.Before(now) {
+				continue
+			}
+			var iss []string
+			for name, n := range d.Issuers {
+				iss = append(iss, fmt.Sprintf("%s(%d)", name, n))
+			}
+			sort.Strings(iss)
+			fmt.Printf("%s\t%d\t%d\t%s\t%s\t%s\n", d.Domain, d.Certs, d.Precerts,
+				d.FirstSeen.Format("2006-01-02"), d.NotAfter.UTC().Format("2006-01-02"), strings.Join(iss, ","))
+		}
 	default:
 		usage()
 	}
@@ -158,7 +189,7 @@ func snapshotLogList(ctx context.Context, cl *ctclient.Client, cfg *config.File,
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ructmirror sync|verify [-root DIR] [-only operator/shard] [-batch N]")
+	fmt.Fprintln(os.Stderr, "usage: ructmirror sync|verify|domains [-root DIR] [-only operator/shard] [-batch N] [-active]")
 	os.Exit(2)
 }
 
