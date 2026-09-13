@@ -21,6 +21,7 @@
   td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
   td.d { word-break: break-all; }
   tr.expired { opacity: .55; }
+  .puny { display: block; font-size: .8em; }
   details { border-bottom: 1px solid rgba(128,128,128,.3); }
   summary { cursor: pointer; padding: .3rem .2rem; display: grid; grid-template-columns: 1fr auto auto auto; gap: 1rem; font-variant-numeric: tabular-nums; }
   summary > span:not(:first-child) { text-align: right; white-space: nowrap; opacity: .8; }
@@ -69,9 +70,58 @@ const GROUP_LIMIT = 300, FLAT_LIMIT = 500, ROWS_IN_GROUP = 2000;
 // Registrable-domain rule: last two labels, or three when the last two are a
 // public suffix that many unrelated organisations sit under.
 const SUFFIXES = new Set(['gov.ru','edu.ru','ac.ru','mil.ru','int.ru','com.ru','net.ru','org.ru','pp.ru',
-  'msk.ru','spb.ru','msk.su','spb.su','nov.ru','ru.net','org.xn--p1ai','com.xn--p1ai','net.xn--p1ai']);
+  'msk.ru','spb.ru','msk.su','spb.su','nov.ru','ru.net','com.by','com.kz','org.xn--p1ai','com.xn--p1ai','net.xn--p1ai']);
 const COLS = ['domain','certs','precerts','first_seen','latest_not_after','issuers'];
 const $ = id => document.getElementById(id);
+
+// Punycode decoding (RFC 3492) so that xn--d1aqf.xn--p1ai reads as дом.рф.
+// Browsers expose no decoder: URL.hostname stays ASCII.
+function punyDecode(input) {
+  const base = 36, tMin = 1, tMax = 26, skew = 38, damp = 700;
+  const adapt = (delta, numPoints, first) => {
+    delta = first ? Math.floor(delta / damp) : delta >> 1;
+    delta += Math.floor(delta / numPoints);
+    let k = 0;
+    for (; delta > ((base - tMin) * tMax) >> 1; k += base) delta = Math.floor(delta / (base - tMin));
+    return k + Math.floor((base - tMin + 1) * delta / (delta + skew));
+  };
+  const out = [];
+  let n = 128, i = 0, bias = 72;
+  const b = input.lastIndexOf('-');
+  for (let j = 0; j < b; j++) out.push(input.charCodeAt(j));
+  for (let idx = b > 0 ? b + 1 : 0; idx < input.length;) {
+    const oldi = i;
+    for (let w = 1, k = base; ; k += base) {
+      if (idx >= input.length) throw new Error('truncated');
+      const c = input.charCodeAt(idx++);
+      const digit = c - 48 < 10 ? c - 22 : c - 65 < 26 ? c - 65 : c - 97 < 26 ? c - 97 : base;
+      if (digit >= base) throw new Error('bad digit');
+      i += digit * w;
+      const t = k <= bias ? tMin : k >= bias + tMax ? tMax : k - bias;
+      if (digit < t) break;
+      w *= base - t;
+    }
+    const len = out.length + 1;
+    bias = adapt(i - oldi, len, oldi === 0);
+    n += Math.floor(i / len);
+    i %= len;
+    out.splice(i++, 0, n);
+  }
+  return String.fromCodePoint(...out);
+}
+function toUnicode(name) {
+  return name.split('.').map(l => {
+    if (!l.startsWith('xn--')) return l;
+    try { return punyDecode(l.slice(4)); } catch (e) { return l; }
+  }).join('.');
+}
+// A name cell: the Unicode form, with the punycode underneath when they differ.
+function nameCell(tag, cls, ascii) {
+  const uni = toUnicode(ascii);
+  const e = el(tag, cls, uni);
+  if (uni !== ascii) { e.title = ascii; e.appendChild(el('small', 'muted puny', ascii)); }
+  return e;
+}
 const today = new Date().toISOString().slice(0, 10);
 let rows = [];
 
@@ -93,7 +143,8 @@ function parse(tsv) {
   for (let i = 1; i < lines.length; i++) {
     if (!lines[i]) continue;
     const f = lines[i].split('\t');
-    out.push({ domain: f[0], certs: +f[1], precerts: +f[2], first: f[3], notAfter: f[4], issuers: f[5] || '',
+    const uni = toUnicode(f[0]);
+    out.push({ domain: f[0], uni: uni === f[0] ? '' : uni, certs: +f[1], precerts: +f[2], first: f[3], notAfter: f[4], issuers: f[5] || '',
                expired: f[4] < today, group: groupKey(f[0]) });
   }
   return out;
@@ -107,7 +158,7 @@ function rowTable(list) {
   for (const r of list) {
     const tr = tb.insertRow();
     if (r.expired) tr.className = 'expired';
-    tr.appendChild(el('td', 'd', r.domain));
+    tr.appendChild(nameCell('td', 'd', r.domain));
     tr.appendChild(el('td', 'n', r.certs));
     tr.appendChild(el('td', 'n', r.precerts));
     tr.appendChild(el('td', '', r.first));
@@ -120,7 +171,7 @@ function rowTable(list) {
 function render() {
   const q = $('q').value.trim().toLowerCase();
   const showExpired = $('expired').checked, grouped = $('group').checked;
-  const sel = rows.filter(r => (showExpired || !r.expired) && (!q || r.domain.includes(q)));
+  const sel = rows.filter(r => (showExpired || !r.expired) && (!q || r.domain.includes(q) || r.uni.includes(q)));
   const out = $('out'), more = $('more');
   out.replaceChildren(); more.textContent = '';
 
@@ -139,7 +190,7 @@ function render() {
     out.appendChild(head);
     for (const g of list.slice(0, GROUP_LIMIT)) {
       const d = el('details'), s = el('summary');
-      s.appendChild(el('span', '', g.key));
+      s.appendChild(nameCell('span', '', g.key));
       s.appendChild(el('span', '', g.names.length));
       s.appendChild(el('span', '', g.certs));
       s.appendChild(el('span', '', g.notAfter));
