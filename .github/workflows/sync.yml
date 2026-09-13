@@ -1,0 +1,60 @@
+name: sync
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Sync all logs
+        id: sync
+        run: go run ./cmd/ructmirror sync
+        continue-on-error: true
+      - name: Offline verification of the whole mirror
+        id: verify
+        run: go run ./cmd/ructmirror verify
+        continue-on-error: true
+      - name: Commit and push whatever was observed
+        if: always()
+        env:
+          TZ: UTC
+        run: |
+          git add data loglist
+          if git diff --cached --quiet; then
+            echo "nothing new"
+            exit 0
+          fi
+          git -c user.name=ru-ct-mirror -c user.email=ru-ct-mirror@proton.me \
+            commit -q -m "sync $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push
+      - name: Open an issue on verification failure
+        if: always() && (steps.sync.outcome == 'failure' || steps.verify.outcome == 'failure')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Verification failure $(date -u +%Y-%m-%d)"
+          body="Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"$'\n\n'
+          for f in $(git ls-files -o -c data/*/*/alerts | sort | tail -n 20); do
+            body+="- $f"$'\n'
+          done
+          if gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length' | grep -qv '^0$'; then
+            echo "issue already open"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+          exit 1
