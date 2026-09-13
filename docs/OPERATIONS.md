@@ -61,6 +61,27 @@ then a verification failure, an unreachable log, a broken runner and a
 disabled schedule all reach you the same way, and the GitHub issue stays as
 the public record.
 
+## GitHub Pages
+
+The `pages` job in `sync.yml` runs after every `sync` job, successful or not,
+and deploys the output of `ructmirror domains` together with `site/index.html`
+and a `meta.json` to <https://ru-ct-mirror.github.io/ru-ct-mirror/>. It
+checks out the branch tip (the commit `sync` just pushed), so the site is
+never more than one run behind the data. Before building it runs
+`ructmirror verify` on that checkout and stops if it fails, so a corrupted or
+truncated chunk is never published as verified data; the previous deployment
+simply stays up. An unreachable log does not stop it. Nothing it produces is
+committed.
+
+One-time setup: Settings → Pages → Build and deployment → Source: **GitHub
+Actions**. Until that is done the job fails at `deploy-pages`; it is marked
+`continue-on-error`, so the workflow, the issue logic and the healthchecks
+ping are unaffected. A fork that does not want a site can simply leave Pages
+off.
+
+To rebuild the site by hand, run the `Build site` step's commands locally
+and serve `_site/` (`python3 -m http.server -d _site`).
+
 ## Two kinds of issues
 
 - **Verification failure <date>**: a log or the log list failed a

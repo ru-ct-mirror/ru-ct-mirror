@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ru-ct-mirror: names issued by the Russian national CA</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0 auto; max-width: 72rem; padding: 1rem; font: 15px/1.45 system-ui, sans-serif; }
+  h1 { font-size: 1.4rem; margin: 0 0 .5rem; }
+  p { margin: .4rem 0; }
+  a { color: inherit; }
+  .muted { opacity: .7; }
+  .files a { margin-right: 1rem; }
+  form { display: flex; flex-wrap: wrap; gap: .6rem 1.2rem; align-items: center; margin: 1rem 0 .6rem; }
+  input[type=search] { font: inherit; padding: .35rem .5rem; min-width: 18rem; flex: 1; }
+  label { white-space: nowrap; }
+  table { border-collapse: collapse; width: 100%; font-size: .92em; }
+  th, td { text-align: left; padding: .2rem .5rem; border-bottom: 1px solid rgba(128,128,128,.3); vertical-align: top; }
+  th { font-weight: 600; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.d { word-break: break-all; }
+  tr.expired { opacity: .55; }
+  details { border-bottom: 1px solid rgba(128,128,128,.3); }
+  summary { cursor: pointer; padding: .3rem .2rem; display: grid; grid-template-columns: 1fr auto auto auto; gap: 1rem; font-variant-numeric: tabular-nums; }
+  summary > span:not(:first-child) { text-align: right; white-space: nowrap; opacity: .8; }
+  details > table { margin: 0 0 .6rem 1rem; width: calc(100% - 1rem); }
+  .head { display: grid; grid-template-columns: 1fr auto auto auto; gap: 1rem; padding: .3rem .2rem; font-weight: 600; border-bottom: 1px solid rgba(128,128,128,.5); }
+  .head > span:not(:first-child) { text-align: right; }
+  #status { margin: .4rem 0; }
+  #more { margin: .6rem 0; }
+  #meta table { width: auto; }
+  code { font-size: .9em; }
+  @media (max-width: 600px) { summary, .head { grid-template-columns: 1fr auto; } summary > span:nth-child(3), summary > span:nth-child(4), .head > span:nth-child(3), .head > span:nth-child(4) { display: none; } }
+</style>
+</head>
+<body>
+<h1>Names issued by the Russian national CA</h1>
+<p>Every DNS name found in a certificate or precertificate logged to the
+Certificate Transparency logs that Yandex Browser trusts for НУЦ Минцифры
+("Russian Trusted Root CA"). Built after each run of the independent mirror at
+<a id="repo" href="https://github.com/ru-ct-mirror/ru-ct-mirror">github.com/ru-ct-mirror/ru-ct-mirror</a>
+from its locally verified copy of the logs.</p>
+<p class="muted">Все DNS-имена из сертификатов НУЦ Минцифры, попавших в CT-логи Яндекса,
+VK и Минцифры. Список строится из независимой проверенной копии логов после
+каждого запуска зеркала. Данные такие, как их выдали логи; «истёк» означает,
+что у имени нет ни одного сертификата с ещё не наступившей датой окончания.</p>
+
+<p class="files">
+  <a href="domains-active.txt">domains-active.txt</a>
+  <a href="domains-active.tsv">domains-active.tsv</a>
+  <a href="domains.tsv">domains.tsv (all, incl. expired)</a>
+  <a href="meta.json">meta.json</a>
+</p>
+<div id="meta" class="muted"></div>
+
+<form id="f" onsubmit="return false">
+  <input type="search" id="q" placeholder="search / поиск: substring of a name" autocomplete="off">
+  <label><input type="checkbox" id="expired"> show expired / показывать истёкшие</label>
+  <label><input type="checkbox" id="group" checked> group by 2nd-level domain / группировать по домену 2-го уровня</label>
+</form>
+<div id="status" class="muted">Loading domains.tsv…</div>
+<div id="out"></div>
+<div id="more" class="muted"></div>
+
+<script>
+'use strict';
+const GROUP_LIMIT = 300, FLAT_LIMIT = 500, ROWS_IN_GROUP = 2000;
+// Registrable-domain rule: last two labels, or three when the last two are a
+// public suffix that many unrelated organisations sit under.
+const SUFFIXES = new Set(['gov.ru','edu.ru','ac.ru','mil.ru','int.ru','com.ru','net.ru','org.ru','pp.ru',
+  'msk.ru','spb.ru','msk.su','spb.su','nov.ru','ru.net','org.xn--p1ai','com.xn--p1ai','net.xn--p1ai']);
+const COLS = ['domain','certs','precerts','first_seen','latest_not_after','issuers'];
+const $ = id => document.getElementById(id);
+const today = new Date().toISOString().slice(0, 10);
+let rows = [];
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function groupKey(name) {
+  const labels = name.replace(/^\*\./, '').split('.');
+  if (labels.length <= 2) return labels.join('.');
+  const two = labels.slice(-2).join('.');
+  return SUFFIXES.has(two) ? labels.slice(-3).join('.') : two;
+}
+function parse(tsv) {
+  const lines = tsv.split('\n');
+  const out = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i]) continue;
+    const f = lines[i].split('\t');
+    out.push({ domain: f[0], certs: +f[1], precerts: +f[2], first: f[3], notAfter: f[4], issuers: f[5] || '',
+               expired: f[4] < today, group: groupKey(f[0]) });
+  }
+  return out;
+}
+
+function rowTable(list) {
+  const t = el('table');
+  const thead = t.createTHead(), hr = thead.insertRow();
+  for (const c of ['name','certs','precerts','first seen','latest expiry','issuers']) hr.appendChild(el('th', /certs|precerts/.test(c) ? 'n' : '', c));
+  const tb = t.createTBody();
+  for (const r of list) {
+    const tr = tb.insertRow();
+    if (r.expired) tr.className = 'expired';
+    tr.appendChild(el('td', 'd', r.domain));
+    tr.appendChild(el('td', 'n', r.certs));
+    tr.appendChild(el('td', 'n', r.precerts));
+    tr.appendChild(el('td', '', r.first));
+    tr.appendChild(el('td', '', r.notAfter));
+    tr.appendChild(el('td', '', r.issuers));
+  }
+  return t;
+}
+
+function render() {
+  const q = $('q').value.trim().toLowerCase();
+  const showExpired = $('expired').checked, grouped = $('group').checked;
+  const sel = rows.filter(r => (showExpired || !r.expired) && (!q || r.domain.includes(q)));
+  const out = $('out'), more = $('more');
+  out.replaceChildren(); more.textContent = '';
+
+  const groups = new Map();
+  for (const r of sel) {
+    let g = groups.get(r.group);
+    if (!g) { g = { key: r.group, names: [], certs: 0, notAfter: '' }; groups.set(r.group, g); }
+    g.names.push(r); g.certs += r.certs; if (r.notAfter > g.notAfter) g.notAfter = r.notAfter;
+  }
+  $('status').textContent = `${sel.length.toLocaleString()} names in ${groups.size.toLocaleString()} registrable domains` +
+    (showExpired ? '' : ' (active only)') + (q ? ` matching "${q}"` : '');
+
+  if (grouped) {
+    const list = [...groups.values()].sort((a, b) => b.names.length - a.names.length || (a.key < b.key ? -1 : 1));
+    const head = el('div', 'head'); for (const c of ['domain','names','certs','latest expiry']) head.appendChild(el('span', '', c));
+    out.appendChild(head);
+    for (const g of list.slice(0, GROUP_LIMIT)) {
+      const d = el('details'), s = el('summary');
+      s.appendChild(el('span', '', g.key));
+      s.appendChild(el('span', '', g.names.length));
+      s.appendChild(el('span', '', g.certs));
+      s.appendChild(el('span', '', g.notAfter));
+      d.appendChild(s);
+      d.addEventListener('toggle', () => {
+        if (d.open && d.childElementCount === 1) {
+          d.appendChild(rowTable(g.names.slice(0, ROWS_IN_GROUP)));
+          if (g.names.length > ROWS_IN_GROUP) d.appendChild(el('p', 'muted', `… and ${g.names.length - ROWS_IN_GROUP} more; refine the search`));
+        }
+      }, { once: false });
+      out.appendChild(d);
+    }
+    if (list.length > GROUP_LIMIT) more.textContent = `… and ${(list.length - GROUP_LIMIT).toLocaleString()} more domains; refine the search or download the TSV.`;
+  } else {
+    out.appendChild(rowTable(sel.slice(0, FLAT_LIMIT)));
+    if (sel.length > FLAT_LIMIT) more.textContent = `… and ${(sel.length - FLAT_LIMIT).toLocaleString()} more names; refine the search or download the TSV.`;
+  }
+  const h = new URLSearchParams();
+  if (q) h.set('q', q); if (showExpired) h.set('expired', '1'); if (!grouped) h.set('flat', '1');
+  history.replaceState(null, '', h.toString() ? '#' + h : location.pathname);
+}
+
+function readHash() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  $('q').value = h.get('q') || '';
+  $('expired').checked = h.get('expired') === '1';
+  $('group').checked = h.get('flat') !== '1';
+}
+
+function showMeta(m) {
+  const box = $('meta');
+  if (m.repository) $('repo').href = m.repository;
+  const p = el('p');
+  p.append('Generated ' + m.generated + ' from commit ');
+  const a = el('a', '', (m.commit || '').slice(0, 12)); a.href = (m.repository || '') + '/commit/' + m.commit; p.appendChild(a);
+  p.append('. Verified tree size per log shard: ');
+  box.appendChild(p);
+  const t = el('table'); const tb = t.createTBody();
+  for (const s of m.shards || []) {
+    const tr = tb.insertRow();
+    tr.appendChild(el('td', '', s.shard)); tr.appendChild(el('td', 'n', Number(s.tree_size).toLocaleString())); tr.appendChild(el('td', '', s.updated || ''));
+  }
+  box.appendChild(t);
+}
+
+let timer;
+$('q').addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(render, 150); });
+$('expired').addEventListener('change', render);
+$('group').addEventListener('change', render);
+window.addEventListener('hashchange', () => { readHash(); render(); });
+
+readHash();
+fetch('meta.json').then(r => r.ok ? r.json() : null).then(m => m && showMeta(m)).catch(() => {});
+fetch('domains.tsv').then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+  .then(t => { rows = parse(t); render(); })
+  .catch(e => { $('status').textContent = 'Could not load domains.tsv: ' + e; });
+</script>
+</body>
+</html>

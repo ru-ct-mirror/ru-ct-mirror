@@ -111,3 +111,62 @@ jobs:
           } > hc-body.txt
           curl -fsS -m 10 --retry 3 -o /dev/null --data-binary @hc-body.txt \
             "$HC_PING_URL/$code${HC_RID:+?rid=$HC_RID}" || true
+
+  # Publishes the list of issued names to GitHub Pages from whatever data/
+  # now holds, after the sync job has pushed. It runs even when sync failed,
+  # so the site never goes stale because a log was down, but it re-verifies
+  # the stored entries first and does not deploy when they no longer match
+  # the verified tree: the previous deployment stays up instead. Nothing
+  # generated here is committed: Pages must be set to "GitHub Actions" as
+  # its source (see docs/OPERATIONS.md). On a fork without Pages this job
+  # fails and is ignored.
+  pages:
+    needs: sync
+    if: always()
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # github.sha is the commit that triggered the run, i.e. from before
+          # sync pushed. Fetch the branch tip instead.
+          ref: ${{ github.ref }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Build
+        run: go build -o ructmirror ./cmd/ructmirror
+      # The site is derived from the entries, not from anything the logs
+      # signed. Publish only what still hashes to the verified roots.
+      - name: Offline verification of the data the site is built from
+        run: ./ructmirror verify
+      - name: Build site
+        run: |
+          mkdir -p _site
+          cp site/index.html _site/
+          ./ructmirror domains > _site/domains.tsv
+          ./ructmirror domains -active > _site/domains-active.tsv
+          tail -n +2 _site/domains-active.tsv | cut -f1 > _site/domains-active.txt
+          jq -n \
+            --arg generated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg commit "$(git rev-parse HEAD)" \
+            --arg repo "${{ github.server_url }}/${{ github.repository }}" \
+            '{generated: $generated, commit: $commit, repository: $repo,
+              shards: [inputs | {
+                shard: (input_filename | sub("^data/"; "") | sub("/state.json$"; "")),
+                tree_size, root_hash, updated}]}' \
+            data/*/*/state.json > _site/meta.json
+          ls -la _site
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

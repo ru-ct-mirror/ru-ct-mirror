@@ -82,6 +82,16 @@ the scheduled job.
 
 ## See what has been issued
 
+The list of names is published after every run at
+<https://ru-ct-mirror.github.io/ru-ct-mirror/>: a page with search and
+grouping by registrable domain, plus the raw files `domains-active.txt`
+(one active name per line), `domains-active.tsv` and `domains.tsv` (all
+names, including expired ones) and `meta.json` (commit and verified tree
+size per shard the list was built from). The site is regenerated from the
+mirror's data by the same workflow; nothing on it is committed to git.
+
+The same list from a clone, without the network:
+
 ```
 go run ./cmd/ructmirror domains -active
 ```
@@ -132,7 +142,10 @@ CT-логов Яндекса, VK и Минцифры. Все три лога и 
 часов из GitHub Actions скачивает все новые записи, проверяет подпись STH,
 пересчитывает Merkle-корень по всем сохранённым записям, проверяет
 consistency proof, фиксирует каждый подписанный STH и коммитит результат.
-Любое расхождение попадает в `alerts/` и в issue. Проверить свой клон без
+Любое расхождение попадает в `alerts/` и в issue. Список имён, на которые
+выписаны сертификаты, публикуется после каждого запуска на
+<https://ru-ct-mirror.github.io/ru-ct-mirror/> (поиск, группировка по домену
+второго уровня, файлы TSV/TXT). Проверить свой клон без
 сети: `go run ./cmd/ructmirror verify`. Поднять второго свидетеля: форк и
 включить Actions.
 
