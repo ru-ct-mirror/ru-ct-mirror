@@ -30,7 +30,10 @@ jobs:
       - name: Report start to healthchecks
         run: |
           [ -n "$HC_PING_URL" ] || exit 0
-          curl -fsS -m 10 --retry 3 -o /dev/null "$HC_PING_URL/start?rid=${{ github.run_id }}" || true
+          # rid ties the start and the end ping together and must be a UUID.
+          rid="$(uuidgen)"
+          echo "HC_RID=$rid" >> "$GITHUB_ENV"
+          curl -fsS -m 10 --retry 3 -o /dev/null "$HC_PING_URL/start?rid=$rid" || true
       # ructmirror exits 2 when a log failed verification (evidence written),
       # 1 for operational errors such as an unreachable log. It must run as a
       # binary: `go run` collapses every non-zero status to 1.
@@ -107,4 +110,4 @@ jobs:
             echo; echo "== verify"; grep -v ': ok, ' verify.log 2>/dev/null | tail -n 20
           } > hc-body.txt
           curl -fsS -m 10 --retry 3 -o /dev/null --data-binary @hc-body.txt \
-            "$HC_PING_URL/$code?rid=${{ github.run_id }}" || true
+            "$HC_PING_URL/$code${HC_RID:+?rid=$HC_RID}" || true
