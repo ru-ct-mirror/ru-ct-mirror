@@ -35,6 +35,31 @@ from a personal account is recorded publicly in the repository's Activity
 view and the Events API, so use a dedicated machine account with its own SSH
 key (`IdentitiesOnly yes` in `~/.ssh/config`) for any manual push.
 
+## Notifications without GitHub e-mail
+
+GitHub refuses alias-style e-mail domains, so the maintainer's notifications
+go through [healthchecks.io](https://healthchecks.io) instead. Every run
+pings a check with its start, its exit status and a log excerpt; a run that
+never happens is noticed as well.
+
+1. Create a check. Schedule: cron `23 */6 * * *`, timezone UTC, grace time
+   30 minutes. Attach whatever notification channels you like (e-mail to any
+   address, Telegram, Signal, ...). Enable "notify on start" if you want the
+   duration tracked.
+2. Copy the ping URL (`https://hc-ping.com/<uuid>`) into the repository as
+   the `HC_PING_URL` secret (Settings → Secrets and variables → Actions).
+3. That is all. The workflow reports `/start` at the beginning and
+   `/<exit status>` at the end: `0` for a clean run, `1` for a sync error
+   (a log was unreachable), `2` for a verification failure, `3` when a step
+   never produced a status because the job itself broke. The request body,
+   visible in the check's log on healthchecks.io, holds the run URL and the
+   interesting lines of the sync and verify output.
+
+Configure healthchecks to alert on failed pings as well as on missed ones;
+then a verification failure, an unreachable log, a broken runner and a
+disabled schedule all reach you the same way, and the GitHub issue stays as
+the public record.
+
 ## Two kinds of issues
 
 - **Verification failure <date>**: a log or the log list failed a

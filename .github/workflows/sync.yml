@@ -13,6 +13,12 @@ concurrency:
   group: sync
   cancel-in-progress: false
 
+# Optional: a healthchecks.io ping URL stored as the HC_PING_URL secret. Every
+# run reports start, exit status and a log excerpt there, so a missing run is
+# noticed too. Steps that use it are no-ops when the secret is absent.
+env:
+  HC_PING_URL: ${{ secrets.HC_PING_URL }}
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -21,6 +27,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      - name: Report start to healthchecks
+        run: |
+          [ -n "$HC_PING_URL" ] || exit 0
+          curl -fsS -m 10 --retry 3 -o /dev/null "$HC_PING_URL/start?rid=${{ github.run_id }}" || true
       # ructmirror exits 2 when a log failed verification (evidence written),
       # 1 for operational errors such as an unreachable log. It must run as a
       # binary: `go run` collapses every non-zero status to 1.
@@ -30,14 +40,14 @@ jobs:
         id: sync
         run: |
           set +e
-          ./ructmirror sync
-          echo "code=$?" >> "$GITHUB_OUTPUT"
+          ./ructmirror sync 2>&1 | tee sync.log
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
       - name: Offline verification of the whole mirror
         id: verify
         run: |
           set +e
-          ./ructmirror verify
-          echo "code=$?" >> "$GITHUB_OUTPUT"
+          ./ructmirror verify 2>&1 | tee verify.log
+          echo "code=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
       - name: Commit and push whatever was observed
         if: always()
         env:
@@ -74,3 +84,23 @@ jobs:
             gh issue create --title "$title" --body "$body"
           fi
           exit 1
+      - name: Report outcome to healthchecks
+        if: always()
+        env:
+          SYNC_CODE: ${{ steps.sync.outputs.code }}
+          VERIFY_CODE: ${{ steps.verify.outputs.code }}
+        run: |
+          [ -n "$HC_PING_URL" ] || exit 0
+          # healthchecks reads the exit status from the URL: 0 is success,
+          # anything else is a failure. Pass the worst of the two steps and
+          # 3 when a step never produced a code (the job itself broke).
+          code="${SYNC_CODE:-3}"
+          if [ "${VERIFY_CODE:-3}" != "0" ] && [ "$code" != "2" ]; then code="${VERIFY_CODE:-3}"; fi
+          {
+            echo "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "sync exit code: ${SYNC_CODE:-none}, verify exit code: ${VERIFY_CODE:-none}"
+            echo; echo "== sync"; grep -v -E ' 0 chunk\(s\), new STH: false$' sync.log 2>/dev/null | tail -n 40
+            echo; echo "== verify"; grep -v ': ok, ' verify.log 2>/dev/null | tail -n 20
+          } > hc-body.txt
+          curl -fsS -m 10 --retry 3 -o /dev/null --data-binary @hc-body.txt \
+            "$HC_PING_URL/$code?rid=${{ github.run_id }}" || true

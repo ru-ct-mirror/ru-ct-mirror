@@ -1,2 +1,5 @@
 /ructmirror
 *.tmp
+sync.log
+verify.log
+hc-body.txt
