@@ -22,18 +22,21 @@ jobs:
         with:
           go-version-file: go.mod
       # ructmirror exits 2 when a log failed verification (evidence written),
-      # 1 for operational errors such as an unreachable log.
+      # 1 for operational errors such as an unreachable log. It must run as a
+      # binary: `go run` collapses every non-zero status to 1.
+      - name: Build
+        run: go build -o ructmirror ./cmd/ructmirror
       - name: Sync all logs
         id: sync
         run: |
           set +e
-          go run ./cmd/ructmirror sync
+          ./ructmirror sync
           echo "code=$?" >> "$GITHUB_OUTPUT"
       - name: Offline verification of the whole mirror
         id: verify
         run: |
           set +e
-          go run ./cmd/ructmirror verify
+          ./ructmirror verify
           echo "code=$?" >> "$GITHUB_OUTPUT"
       - name: Commit and push whatever was observed
         if: always()
