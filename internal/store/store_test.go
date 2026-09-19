@@ -142,3 +142,57 @@ func TestPruneBeyond(t *testing.T) {
 		t.Fatalf("chunks after prune: %+v", chunks)
 	}
 }
+
+func TestReadChunkReadsOnlyThatChunk(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.WriteChunk(0, []ct.LeafEntry{{LeafInput: []byte{0}}, {LeafInput: []byte{1}}}); err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.WriteChunk(2, []ct.LeafEntry{{LeafInput: []byte{2}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []uint64
+	if err := ReadChunk(second, func(e Entry) error { got = append(got, e.Index); return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != 2 {
+		t.Fatalf("got %v, want just entry 2", got)
+	}
+	missing := Chunk{Path: filepath.Join(s.Dir, "entries", "00000009-00000009.jsonl.gz"), Start: 9, End: 9}
+	if err := ReadChunk(missing, func(Entry) error { return nil }); err == nil {
+		t.Fatal("reading a chunk that is not there must fail")
+	}
+}
+
+func TestParseChunkPathAcceptsOnlyTheCanonicalName(t *testing.T) {
+	s, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.WriteChunk(2048, []ct.LeafEntry{{LeafInput: []byte{0}}}); err != nil {
+		t.Fatal(err)
+	}
+	chunks, err := s.Chunks()
+	if err != nil || len(chunks) != 1 {
+		t.Fatalf("chunks=%v err=%v", chunks, err)
+	}
+	got, err := ParseChunkPath(chunks[0].Path)
+	if err != nil || got != chunks[0] {
+		t.Fatalf("ParseChunkPath(%s) = %+v, %v; want %+v", chunks[0].Path, got, err, chunks[0])
+	}
+	for _, name := range []string{
+		"00002048-00002048.jsonl.gz.tmp", // a chunk half written by an interrupted run
+		"2048-2048.jsonl.gz",             // not zero padded
+		"00000005-00000001.jsonl.gz",     // ends before it starts
+		"00002048.jsonl.gz",
+		"entries.jsonl.gz",
+	} {
+		if _, err := ParseChunkPath(filepath.Join(s.Dir, "entries", name)); err == nil {
+			t.Errorf("%s was accepted as a chunk name", name)
+		}
+	}
+}

@@ -29,7 +29,7 @@ a GitHub Actions job running outside Russia:
 5. records every distinct signed STH it has ever seen,
 6. snapshots `ctlog.json` and fails loudly if a log key changes or a log
    appears that is not in `logs.json`,
-7. commits the result.
+7. commits the result and summarises the names it just observed.
 
 If any check fails the evidence (both STHs, the proof, the entries that were
 served) is committed under `alerts/` and an issue titled **Verification
@@ -89,6 +89,20 @@ grouping by registrable domain, plus the raw files `domains-active.txt`
 names, including expired ones) and `meta.json` (commit and verified tree
 size per shard the list was built from). The site is regenerated from the
 mirror's data by the same workflow; nothing on it is committed to git.
+
+Each run also summarises itself. `ructmirror summary` reads the chunk files a
+run added — the only files a run ever adds — and writes the commit message for
+them: how many entries each shard gained, and the DNS names those entries
+carry, marking with `+` every name the mirror had never seen before. IDN names
+are shown in Unicode next to the stored form. The list is capped at 100 names;
+`ructmirror domains` and the site always have the whole picture. The workflow
+prints that summary on every run and is being switched over to commit with it
+(see `docs/OPERATIONS.md`).
+
+```
+./ructmirror summary $(git diff --cached --name-only --diff-filter=A \
+                         -- ':(glob)data/*/*/entries/*.jsonl.gz')
+```
 
 The same list from a clone, without the network:
 

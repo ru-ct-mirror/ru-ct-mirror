@@ -62,6 +62,31 @@ jobs:
             echo "nothing new"
             exit 0
           fi
+          # A run only ever adds chunk files, so the files staged as added are
+          # exactly the entries it observed; summary turns them into the commit
+          # message. It must run after git add and before the commit.
+          added="$(git diff --cached --name-only --diff-filter=A \
+                     -- ':(glob)data/*/*/entries/*.jsonl.gz')"
+          rm -f commit-msg.txt
+          # A broken or slow summary must never cost us the data, so failures
+          # here are swallowed and the bare subject is used instead.
+          # -k because summary traps SIGTERM (signal.NotifyContext) and not
+          # every phase of it watches that context: without a kill deadline a
+          # stuck summary would hold up the commit and the push indefinitely.
+          timeout -k 10 240 ./ructmirror summary $added > commit-msg.txt 2> summary.log || true
+          # The summary quotes hostile names, but it still prints strings that
+          # whoever asked the CA for a certificate chose, and the runner reads
+          # its own commands out of the log. Fence the echo with a token the
+          # printed text cannot guess, so a name beginning ::error:: or
+          # ::add-mask:: is nothing but text.
+          fence="$(uuidgen)"
+          echo "::stop-commands::$fence"
+          cat summary.log || true
+          cat commit-msg.txt || true
+          echo "::$fence::"
+          # Second stage of the rollout: commit with -F commit-msg.txt when the
+          # message above has proved itself over a few real runs, keeping the
+          # -m form as the fallback for an empty commit-msg.txt.
           git -c user.name=ru-ct-mirror -c user.email=ru-ct-mirror@proton.me \
             commit -q -m "sync $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push
@@ -108,6 +133,9 @@ jobs:
             echo "sync exit code: ${SYNC_CODE:-none}, verify exit code: ${VERIFY_CODE:-none}, publish: ${PUBLISH:-none}"
             echo; echo "== sync"; grep -v -E ' 0 chunk\(s\), new STH: false$' sync.log 2>/dev/null | tail -n 40
             echo; echo "== verify"; grep -v ': ok, ' verify.log 2>/dev/null | tail -n 20
+            # An idle run never writes commit-msg.txt, and the step runs under
+            # set -e: without the guard a missing file would cost us the ping.
+            echo; echo "== names"; head -n 30 commit-msg.txt 2>/dev/null || true
           } > hc-body.txt
           curl -fsS -m 10 --retry 3 -o /dev/null --data-binary @hc-body.txt \
             "$HC_PING_URL/$code${HC_RID:+?rid=$HC_RID}" || true

@@ -3,8 +3,14 @@
 //	ructmirror sync    [-root DIR] [-only operator/shard] [-batch N]
 //	ructmirror verify  [-root DIR] [-only operator/shard]
 //	ructmirror domains [-root DIR] [-only operator/shard] [-active]
+//	ructmirror summary [-root DIR] CHUNK...
 //
 // DIR is the repository root: it must contain logs.json, roots/ and data/.
+//
+// summary prints, on stdout, the commit message for a run that added CHUNK...
+// to the mirror: the entries and names those chunks carry, with the names the
+// mirror had never seen before marked. Flags must come before CHUNK..., since
+// flag parsing stops at the first argument that is not a flag.
 //
 // Exit status: 0 when everything verified, 2 when a log or the log list
 // failed verification (evidence was written), 1 for any other error such as
@@ -12,6 +18,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -29,6 +36,15 @@ import (
 	"github.com/ru-ct-mirror/ru-ct-mirror/internal/loglist"
 	"github.com/ru-ct-mirror/ru-ct-mirror/internal/mirror"
 	"github.com/ru-ct-mirror/ru-ct-mirror/internal/store"
+)
+
+const (
+	// firstSeenTimeout bounds the scan of the rest of the mirror that decides
+	// which names are new. The scan grows with the mirror; when it no longer
+	// fits, the summary drops the markers rather than the commit.
+	firstSeenTimeout = 2 * time.Minute
+	// maxSummaryNames is how many names one commit message lists.
+	maxSummaryNames = 100
 )
 
 func main() {
@@ -137,6 +153,35 @@ func main() {
 			fmt.Printf("%s\t%d\t%d\t%s\t%s\t%s\n", d.Domain, d.Certs, d.Precerts,
 				d.FirstSeen.Format("2006-01-02"), d.NotAfter.UTC().Format("2006-01-02"), strings.Join(iss, ","))
 		}
+	case "summary":
+		// -only filters logs before this switch, and a narrowed scan would call
+		// every name new. The scan reads data/ directly, so refuse the flag
+		// rather than let it look as though it scoped anything.
+		if *only != "" {
+			fatal(errors.New("summary: -only would not narrow the first-seen scan; drop it"))
+		}
+		var refs []mirror.ChunkRef
+		for _, p := range fs.Args() {
+			ref, err := mirror.ChunkRefFromPath(*root, p)
+			fatal(err)
+			refs = append(refs, ref)
+		}
+		s, err := mirror.Summarise(refs)
+		fatal(err)
+		scan, cancel := context.WithTimeout(ctx, firstSeenTimeout)
+		done, err := mirror.MarkFirstSeen(scan, s, *root, refs, 0)
+		cancel()
+		fatal(err)
+		s.Marked = done
+		if !done {
+			fmt.Fprintf(os.Stderr, "first-seen scan did not finish within %s; markers omitted\n", firstSeenTimeout)
+		}
+		// Render whole, then write once: a message that is half written and
+		// then fails is worse than no message at all.
+		var msg bytes.Buffer
+		fatal(s.Render(&msg, time.Now(), maxSummaryNames))
+		_, err = os.Stdout.Write(msg.Bytes())
+		fatal(err)
 	default:
 		usage()
 	}
@@ -189,7 +234,7 @@ func snapshotLogList(ctx context.Context, cl *ctclient.Client, cfg *config.File,
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: ructmirror sync|verify|domains [-root DIR] [-only operator/shard] [-batch N] [-active]")
+	fmt.Fprintln(os.Stderr, "usage: ructmirror sync|verify|domains|summary [-root DIR] [-only operator/shard] [-batch N] [-active] [CHUNK...]")
 	os.Exit(2)
 }
 

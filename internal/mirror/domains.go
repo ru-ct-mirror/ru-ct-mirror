@@ -3,12 +3,7 @@ package mirror
 import (
 	"fmt"
 	"sort"
-	"strings"
 	"time"
-
-	ct "github.com/google/certificate-transparency-go"
-	"github.com/google/certificate-transparency-go/tls"
-	"github.com/google/certificate-transparency-go/x509"
 
 	"github.com/ru-ct-mirror/ru-ct-mirror/internal/store"
 )
@@ -27,51 +22,30 @@ type DomainStat struct {
 // certificate (or precertificate TBS) inside each leaf.
 func Domains(st *store.Store, acc map[string]*DomainStat) (uint64, error) {
 	return st.ForEachEntry(func(e store.Entry) error {
-		var leaf ct.MerkleTreeLeaf
-		if _, err := tls.Unmarshal(e.LeafInput, &leaf); err != nil {
+		info, ok, err := ParseLeaf(e)
+		if err != nil {
 			return fmt.Errorf("entry %d: %w", e.Index, err)
 		}
-		var cert *x509.Certificate
-		var err error
-		precert := false
-		switch leaf.TimestampedEntry.EntryType {
-		case ct.X509LogEntryType:
-			cert, err = x509.ParseCertificate(leaf.TimestampedEntry.X509Entry.Data)
-		case ct.PrecertLogEntryType:
-			cert, err = x509.ParseTBSCertificate(leaf.TimestampedEntry.PrecertEntry.TBSCertificate)
-			precert = true
-		default:
+		if !ok {
 			return nil
 		}
-		if err != nil && cert == nil {
-			// Unparseable leaves are still hashed and verified; they only cannot be summarised.
-			return nil
-		}
-		names := map[string]bool{}
-		for _, d := range cert.DNSNames {
-			names[strings.ToLower(d)] = true
-		}
-		if cn := strings.ToLower(cert.Subject.CommonName); cn != "" && strings.Contains(cn, ".") && !strings.Contains(cn, " ") {
-			names[cn] = true
-		}
-		ts := time.UnixMilli(int64(leaf.TimestampedEntry.Timestamp)).UTC()
-		for n := range names {
+		for _, n := range info.Names {
 			s := acc[n]
 			if s == nil {
-				s = &DomainStat{Domain: n, Issuers: map[string]int{}, FirstSeen: ts}
+				s = &DomainStat{Domain: n, Issuers: map[string]int{}, FirstSeen: info.Logged}
 				acc[n] = s
 			}
 			s.Certs++
-			if precert {
+			if info.Precert {
 				s.Precerts++
 			}
-			if cert.NotAfter.After(s.NotAfter) {
-				s.NotAfter = cert.NotAfter
+			if info.NotAfter.After(s.NotAfter) {
+				s.NotAfter = info.NotAfter
 			}
-			if ts.Before(s.FirstSeen) {
-				s.FirstSeen = ts
+			if info.Logged.Before(s.FirstSeen) {
+				s.FirstSeen = info.Logged
 			}
-			s.Issuers[cert.Issuer.CommonName]++
+			s.Issuers[info.Issuer]++
 		}
 		return nil
 	})

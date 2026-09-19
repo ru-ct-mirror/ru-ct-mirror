@@ -3,4 +3,6 @@
 sync.log
 verify.log
 hc-body.txt
+commit-msg.txt
+summary.log
 _site/

@@ -142,15 +142,33 @@ func (s *Store) Chunks() ([]Chunk, error) {
 	}
 	var out []Chunk
 	for _, f := range files {
-		var c Chunk
-		if _, err := fmt.Sscanf(filepath.Base(f), "%08d-%08d.jsonl.gz", &c.Start, &c.End); err != nil {
-			return nil, fmt.Errorf("unexpected chunk file name %s", f)
+		c, err := ParseChunkPath(f)
+		if err != nil {
+			return nil, err
 		}
-		c.Path = f
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Start < out[j].Start })
 	return out, nil
+}
+
+// ParseChunkPath derives a Chunk from the name of an entries file. It accepts
+// only the canonical NNNNNNNN-NNNNNNNN.jsonl.gz form: Sscanf alone ignores
+// trailing input, so it would also accept a leftover .tmp file, and callers
+// outside this package hand it names that never came from Chunks.
+func ParseChunkPath(path string) (Chunk, error) {
+	c := Chunk{Path: path}
+	base := filepath.Base(path)
+	if _, err := fmt.Sscanf(base, "%08d-%08d.jsonl.gz", &c.Start, &c.End); err != nil {
+		return Chunk{}, fmt.Errorf("unexpected chunk file name %s", path)
+	}
+	if fmt.Sprintf("%08d-%08d.jsonl.gz", c.Start, c.End) != base {
+		return Chunk{}, fmt.Errorf("unexpected chunk file name %s", path)
+	}
+	if c.Start > c.End {
+		return Chunk{}, fmt.Errorf("chunk %s ends before it starts", path)
+	}
+	return c, nil
 }
 
 // WriteChunk stores entries with consecutive indexes starting at start.
@@ -213,7 +231,7 @@ func (s *Store) ForEachEntry(fn func(Entry) error) (uint64, error) {
 		if c.Start != next {
 			return next, fmt.Errorf("gap in entries: expected chunk starting at %d, found %s", next, filepath.Base(c.Path))
 		}
-		if err := readChunk(c, func(e Entry) error {
+		if err := ReadChunk(c, func(e Entry) error {
 			if e.Index != next {
 				return fmt.Errorf("%s: expected index %d, found %d", filepath.Base(c.Path), next, e.Index)
 			}
@@ -229,7 +247,12 @@ func (s *Store) ForEachEntry(fn func(Entry) error) (uint64, error) {
 	return next, nil
 }
 
-func readChunk(c Chunk, fn func(Entry) error) error {
+// ReadChunk streams the entries of one chunk file in stored order. It does not
+// check the indexes against the file name: ForEachEntry does that for a whole
+// shard, and a caller reading a single chunk out of context has nothing to
+// check it against. It is a function, not a method, because a chunk carries its
+// own path and may belong to any store.
+func ReadChunk(c Chunk, fn func(Entry) error) error {
 	f, err := os.Open(c.Path)
 	if err != nil {
 		return err

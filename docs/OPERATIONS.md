@@ -17,7 +17,9 @@ A shard whose host disappears should be marked `"disabled": true` with a
 The repository stays small enough for GitHub for years, but if it ever grows
 past a gigabyte, move whole `data/<operator>/<shard>/` directories of closed
 shards into GitHub Releases or a separate archive repository. Never rewrite
-history; the value of the mirror is that its history is boring.
+history; the value of the mirror is that its history is boring. Note that
+moving a shard out makes the `+` markers in past commit messages impossible to
+check, and wrong in future ones for names that were only ever seen there.
 
 ## Maintainer identity
 
@@ -34,6 +36,58 @@ Pushes from GitHub Actions are attributed to `github-actions[bot]`. A push
 from a personal account is recorded publicly in the repository's Activity
 view and the Events API, so use a dedicated machine account with its own SSH
 key (`IdentitiesOnly yes` in `~/.ssh/config`) for any manual push.
+
+## What a sync commit says
+
+`ructmirror summary` turns the chunk files a run added into that run's commit
+message. A run only ever adds chunks and never rewrites one, so the message is
+derived from the commit's own diff and anyone with a clone can recompute it:
+
+```
+sync 2026-09-19T18:23:07Z: 14 entries, 9 names (3 new)
+
+digital-gov/2026  [8745, 8749]   5 entries
+vk/2026           [6144, 6144]   1 entry
+yandex/2027       [9932, 9939]   8 entries
+
+Names in the added chunks, + when new to this mirror:
+
++ api.gosuslugi.ru
+  lk.gosuslugi.ru
++ xn--d1aqf.xn--p1ai (дом.рф)
+```
+
+`+` means the name appears in no chunk this run did not add. That is first
+appearance **in this mirror**, not first issuance: the Ministry's 2022-2024
+shards were already gone when the mirror started, so a name first certified
+there looks new here the day it is renewed. Moving a closed shard out of the
+repository has the same effect, which is the other reason to think twice
+before doing it.
+
+The subject keeps the `sync <timestamp>` form, so `git log --grep='^sync [0-9]'`
+still selects exactly the automated commits. At most 100 names are listed;
+`ructmirror domains` and the Pages site have the rest.
+
+A commit whose message is only `sync <timestamp>`, with no body, is not a bug:
+the workflow falls back to it whenever the summary fails or runs past its
+timeout, because publishing the data matters more than describing it. The same
+goes for a message that lists names without `+` markers — it means the scan of
+the rest of the mirror did not finish in time.
+
+Names are printed as the certificate carries them, and certificates here are
+signed by the CA this repository exists to watch. A name outside
+`a-z 0-9 . - _ *` is quoted, anything over 100 runes is cut, and the Unicode
+reading of an IDN is shown only when the decoded label re-encodes to exactly
+the stored one, contains no control, bidi, invisible or combining characters,
+and each label is written in a single script. That strictness is deliberate:
+by the rule above, a wrong or hostile name in a commit message cannot be taken
+back.
+
+Rollout: the workflow currently computes the message, prints it into the job
+log and sends its first lines to healthchecks, but still commits with the bare
+subject. Once a few real runs have been read, switch the commit in
+`.github/workflows/sync.yml` to `-F commit-msg.txt`, keeping the `-m` form for
+when `commit-msg.txt` comes out empty.
 
 ## Notifications without GitHub e-mail
 
