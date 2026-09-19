@@ -42,10 +42,21 @@ go through [healthchecks.io](https://healthchecks.io) instead. Every run
 pings a check with its start, its exit status and a log excerpt; a run that
 never happens is noticed as well.
 
-1. Create a check. Schedule: cron `23 */6 * * *`, timezone UTC, grace time
-   30 minutes. Attach whatever notification channels you like (e-mail to any
-   address, Telegram, Signal, ...). Enable "notify on start" if you want the
-   duration tracked.
+1. Create a check. Schedule: **simple**, period 6 hours, grace time 4 hours.
+   Attach whatever notification channels you like (e-mail to any address,
+   Telegram, Signal, ...). Enable "notify on start" if you want the duration
+   tracked.
+
+   Do not mirror the workflow's cron here. GitHub queues scheduled runs on
+   shared runners and fires them hours late: over a week of this repository's
+   history the delay against `23 */6 * * *` ranged from 41 minutes to 5h31m
+   (median ~4h35m), while the interval between consecutive runs stayed
+   between 4h20m and 8h50m. Cron mode measures against the nominal time and
+   would need a grace of nearly seven hours to stay quiet; the simple period
+   measures the interval between pings, which is what actually holds steady.
+   Period plus grace is the silence that triggers an alert — 10 hours here,
+   comfortably above the worst observed gap and still below the ~12 hours a
+   genuinely skipped run produces.
 2. Copy the ping URL (`https://hc-ping.com/<uuid>`) into the repository as
    the `HC_PING_URL` secret (Settings → Secrets and variables → Actions).
 3. That is all. The workflow reports `/start` at the beginning and
