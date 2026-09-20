@@ -230,6 +230,9 @@ func snapshotLogList(ctx context.Context, cl *ctclient.Client, cfg *config.File,
 	for _, c := range d.Changed {
 		errs = append(errs, fmt.Errorf("ALERT log list: key changed: %s", c))
 	}
+	for _, r := range d.Retimed {
+		errs = append(errs, fmt.Errorf("ALERT log list: mmd changed: %s", r))
+	}
 	return true, errors.Join(errs...)
 }
 

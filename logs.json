@@ -48,6 +48,7 @@
       "url": "https://ct-agate.yandex.net/2026/",
       "log_id": "Vh7HRN8a9wLmJoOt38SVz3WjGwxs6KDH6gEDMJC3SIU=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAQAIwfEbBkUu1RDSLnlcGoVlMbRc8wQC1yusWLBDR8c3cJIyk0HtI+Uwfga99z4/7Mt8fkSwVTGQkMkiv4UsTw==",
+      "mmd": 86400,
       "tls": "system",
       "key_source": "browser-resources.s3.yandex.net/ctlog/ctlog.json v1.229 (2026-08-12)"
     },
@@ -58,6 +59,7 @@
       "url": "https://ct-agate.yandex.net/2027/",
       "log_id": "GukWh2bX94qcsIb4xJw8Xc64yZMAqa9L/7CbB0+BLBc=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEWPA3LO1jJwycQcruCqve2RM0M19HF7V9IFCBsekQTWg3ZB8m9OGEdVFVnNvf6T6kuLN2mRV6kfwlFiaurInyjw==",
+      "mmd": 86400,
       "tls": "system",
       "key_source": "browser-resources.s3.yandex.net/ctlog/ctlog.json v1.229 (2026-08-12)"
     },
@@ -108,6 +110,7 @@
       "url": "https://ctlog2026.mail.ru/nca2026/",
       "log_id": "eNkSvkIKwAIcul2iVDKRU9tIywYr/EMBJB4Qq8cWnmc=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAErRmHL0jQ8p4csgKnL1NdFLWeLVQ24UkE6XuMwfzV0kYxklCMo6xKBOY4TZXPRtrqY1NVNIR4Sl6VoGSs2lfpaw==",
+      "mmd": 86400,
       "tls": "system",
       "key_source": "browser-resources.s3.yandex.net/ctlog/ctlog.json v1.229 (2026-08-12)"
     },
@@ -118,6 +121,7 @@
       "url": "https://ctlog2027.mail.ru/nca2027/",
       "log_id": "1LN/8nNPJvHlUHXlhVtwT95xu30Fx1fT3OsTf2JDrSQ=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE033sB9kJ/GPmXUD0rZuE5UnsczJbmVy4P1zqgVhnyihkLqCvX3SqmKZ2DSXTDXfj5EsUm5dUSUSo4RCeNqrRwQ==",
+      "mmd": 86400,
       "tls": "system",
       "key_source": "browser-resources.s3.yandex.net/ctlog/ctlog.json v1.229 (2026-08-12)"
     },
@@ -174,6 +178,7 @@
       "url": "https://26.ctlog.digital.gov.ru/2026/",
       "log_id": "ybgRvMAcYl3KJ/TWxEfLX34Ov3LLWZGoMy+Zv5oqPko=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELLlQEbDY7eHMYWce3m5g4IhuYGK0k8mCNw7G4rRJuJAgATGv2ODHJsRnKAkyj2kvXRp9LqRGAJDVqyPtdXs8bA==",
+      "mmd": 86400,
       "tls": "russian-trusted",
       "key_source": "browser-resources.s3.yandex.net/ctlog/ctlog.json v1.229 (2026-08-12)"
     },
@@ -184,6 +189,7 @@
       "url": "https://27.ctlog.digital.gov.ru/2027/",
       "log_id": "TJig3bv0dZNmDDboZiaHFAn5fnh4TpGeqWr4HFMnXNY=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEqsuxOavsWg7bphvn2+6nUW2L/UmQtxsbZQnPcJGrdhSdgkM8QePfw0EzBXGjRRH8C/Saa1OY4weg3PJvmZfq9Q==",
+      "mmd": 86400,
       "tls": "russian-trusted",
       "key_source": "browser-resources.s3.yandex.net/ctlog/ctlog.json v1.229 (2026-08-12)"
     }

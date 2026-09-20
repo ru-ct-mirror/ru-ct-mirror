@@ -8,7 +8,19 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
+
+// DefaultMMD is the maximum merge delay assumed for a shard whose logs.json
+// entry does not state one. Every log on Yandex's list declares 86400.
+const DefaultMMD = 24 * time.Hour
+
+// maxMMDSeconds bounds what logs.json may declare. Every log on Yandex's
+// list says 86400 and Chrome's policy caps RFC 6962 logs at four hours, so a
+// week is already far outside anything a real log publishes; the bound is
+// here so that an MMD read from a file can be turned into a time.Duration and
+// added to without overflowing.
+const maxMMDSeconds = 7 * 24 * 60 * 60
 
 // TLSMode selects which trust anchors are used for a log's HTTPS endpoint.
 type TLSMode string
@@ -30,12 +42,26 @@ type Log struct {
 	Key         string  `json:"key"`
 	TLS         TLSMode `json:"tls"`
 	KeySource   string  `json:"key_source"`
-	Disabled    bool    `json:"disabled,omitempty"`
-	Note        string  `json:"note,omitempty"`
+	// MMDSeconds is the log's declared maximum merge delay, copied from
+	// ctlog.json. Zero means unstated; use MMD rather than reading it.
+	MMDSeconds int64  `json:"mmd,omitempty"`
+	Disabled   bool   `json:"disabled,omitempty"`
+	Note       string `json:"note,omitempty"`
 }
 
 // Name is the operator/shard pair used in paths and messages.
 func (l Log) Name() string { return l.Operator + "/" + l.Shard }
+
+// MMD is the log's maximum merge delay. RFC 6962 §3.5 requires a log to
+// produce on demand an STH no older than this, signing the same root with a
+// fresh timestamp when nothing was submitted, so an STH older than the MMD is
+// a breach of the log's own published terms and not merely a quiet log.
+func (l Log) MMD() time.Duration {
+	if l.MMDSeconds <= 0 {
+		return DefaultMMD
+	}
+	return time.Duration(l.MMDSeconds) * time.Second
+}
 
 // KeyDER returns the log's SubjectPublicKeyInfo, or nil when unknown.
 func (l Log) KeyDER() ([]byte, error) {
@@ -76,6 +102,10 @@ func Load(path string) (*File, error) {
 			return nil, fmt.Errorf("%s: duplicate log %s", path, l.Name())
 		}
 		seen[l.Name()] = true
+		if l.MMDSeconds < 0 || l.MMDSeconds > maxMMDSeconds {
+			return nil, fmt.Errorf("%s: %s: mmd must be between 0 and %d seconds, got %d",
+				path, l.Name(), maxMMDSeconds, l.MMDSeconds)
+		}
 		switch l.TLS {
 		case TLSSystem, TLSRussianTrusted:
 		default:

@@ -8,6 +8,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -34,6 +35,11 @@ type fakeLog struct {
 	lieRoot bool
 	// badProof makes get-sth-consistency return garbage.
 	badProof bool
+	// signed, when non-zero, is the timestamp get-sth reports instead of now.
+	signed time.Time
+	// signedMilli, when non-zero, is reported verbatim, so a test can serve a
+	// timestamp no time.Time can hold.
+	signedMilli uint64
 }
 
 func (f *fakeLog) hashes() [][]byte {
@@ -63,7 +69,15 @@ func (f *fakeLog) sth(t *testing.T) ct.GetSTHResponse {
 	if f.lieRoot {
 		root = sha256.New().Sum(nil)
 	}
-	sth := ct.SignedTreeHead{Version: ct.V1, TreeSize: n, Timestamp: uint64(time.Now().UnixMilli())}
+	ts := time.Now()
+	if !f.signed.IsZero() {
+		ts = f.signed
+	}
+	milli := uint64(ts.UnixMilli())
+	if f.signedMilli != 0 {
+		milli = f.signedMilli
+	}
+	sth := ct.SignedTreeHead{Version: ct.V1, TreeSize: n, Timestamp: milli}
 	copy(sth.SHA256RootHash[:], root)
 	th, err := ct.SerializeSTHSignatureInput(sth)
 	if err != nil {
@@ -322,6 +336,110 @@ func TestSyncDetectsShrinkAndBadSignature(t *testing.T) {
 	_, err = Sync(t.Context(), cl, l, st, Options{})
 	if !errorsAs(err, &a) || a.Kind != "bad-sth-signature" {
 		t.Fatalf("want bad-sth-signature, got %v", err)
+	}
+}
+
+// TestSyncJudgesSTHAge pins both clocks and walks the STH age across every
+// boundary: fresh, past the MMD but inside the grace, past the grace, and
+// timestamped ahead of us.
+func TestSyncJudgesSTHAge(t *testing.T) {
+	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	const mmd = time.Hour
+	for _, tc := range []struct {
+		name string
+		age  time.Duration
+		kind string // "" when the sync must succeed
+	}{
+		{"fresh", time.Minute, ""},
+		{"past the mmd, inside the grace", mmd + time.Hour, ""},
+		{"exactly at the grace", mmd + staleGrace, ""},
+		{"past the grace", mmd + staleGrace + time.Second, "stale-sth"},
+		{"slightly ahead of us", -clockSkew, ""},
+		{"far ahead of us", -clockSkew - time.Second, "sth-from-future"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, _, l, cl, st := setup(t, 3)
+			f.signed = base.Add(-tc.age)
+			l.MMDSeconds = int64(mmd.Seconds())
+			opt := Options{Now: func() time.Time { return base }}
+
+			res, err := Sync(t.Context(), cl, l, st, opt)
+			var a *Alert
+			switch {
+			case tc.kind == "" && err != nil:
+				t.Fatalf("want a clean sync, got %v", err)
+			case tc.kind == "":
+				if res.NewSize != 3 {
+					t.Fatalf("want the tree synced, got %+v", res)
+				}
+				return
+			case !errorsAs(err, &a) || a.Kind != tc.kind:
+				t.Fatalf("want %s, got %v", tc.kind, err)
+			}
+			// The STH that triggered the alert is evidence and must be on
+			// disk, and nothing may be recorded as verified.
+			last, err := st.LastSTH()
+			if err != nil || last == nil || last.STH.TreeSize != 3 {
+				t.Fatalf("want the offending STH recorded, got %+v (%v)", last, err)
+			}
+			if _, found, _ := st.LoadState(); found {
+				t.Fatal("a rejected STH must not become verified state")
+			}
+			if chunks, _ := st.Chunks(); len(chunks) != 0 {
+				t.Fatalf("want no entries fetched, got %d chunk(s)", len(chunks))
+			}
+		})
+	}
+}
+
+// TestSyncJudgesUnrepresentableSTHAge covers the timestamps that no longer fit
+// the arithmetic: time.Time.Sub pins a difference it cannot represent at the
+// ends of a time.Duration, and a timestamp past MaxInt64 milliseconds wraps
+// negative on the way in. Both must still reach an alert rather than sail
+// through the freshness checks.
+func TestSyncJudgesUnrepresentableSTHAge(t *testing.T) {
+	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	now := func() time.Time { return base }
+
+	t.Run("centuries ahead", func(t *testing.T) {
+		f, _, l, cl, st := setup(t, 2)
+		// Further ahead than a time.Duration can express, so age saturates.
+		f.signed = base.AddDate(500, 0, 0)
+		if base.Sub(f.signed) != time.Duration(math.MinInt64) {
+			t.Fatalf("this test needs a saturated age, got %v", base.Sub(f.signed))
+		}
+		_, err := Sync(t.Context(), cl, l, st, Options{Now: now})
+		var a *Alert
+		if !errorsAs(err, &a) || a.Kind != "sth-from-future" {
+			t.Fatalf("want sth-from-future, got %v", err)
+		}
+	})
+
+	t.Run("timestamp past MaxInt64 milliseconds", func(t *testing.T) {
+		f, _, l, cl, st := setup(t, 2)
+		f.signedMilli = uint64(math.MaxInt64) + 1<<40
+		_, err := Sync(t.Context(), cl, l, st, Options{Now: now})
+		var a *Alert
+		if !errorsAs(err, &a) || a.Kind != "stale-sth" {
+			t.Fatalf("want stale-sth, got %v", err)
+		}
+	})
+}
+
+// TestSyncUsesDefaultMMDWhenUnstated covers the shards that are no longer on
+// Yandex's list: logs.json records no mmd for them, so the RFC's own 24 hours
+// is what they are held to.
+func TestSyncUsesDefaultMMDWhenUnstated(t *testing.T) {
+	base := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	f, _, l, cl, st := setup(t, 2)
+	if l.MMDSeconds != 0 {
+		t.Fatal("this test needs a shard with no declared mmd")
+	}
+	f.signed = base.Add(-(config.DefaultMMD + staleGrace + time.Minute))
+	_, err := Sync(t.Context(), cl, l, st, Options{Now: func() time.Time { return base }})
+	var a *Alert
+	if !errorsAs(err, &a) || a.Kind != "stale-sth" {
+		t.Fatalf("want stale-sth at the default MMD, got %v", err)
 	}
 }
 

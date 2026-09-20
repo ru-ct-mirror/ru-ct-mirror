@@ -65,6 +65,27 @@ type Result struct {
 
 var hasher = rfc6962.DefaultHasher
 
+const (
+	// clockSkew is how far ahead of us a log's clock may be before an STH
+	// counts as timestamped in the future. An SCT promises inclusion within
+	// the MMD of its own timestamp, so a log running fast quietly buys
+	// itself extra time; this bounds how much of that goes unremarked, while
+	// leaving room for the ordinary disagreement between two unsynchronised
+	// clocks.
+	clockSkew = 10 * time.Minute
+
+	// staleGrace is added to the MMD before an old STH becomes an alert.
+	// RFC 6962 §3.5 is breached the moment an STH outlives the MMD, but
+	// nothing here can ask for a fresh one, and a log that re-signs on a
+	// daily cron rather than on demand sits just under its 24-hour MMD by
+	// design: VK's closed shards re-sign at 03:42 and nowhere else, so a
+	// strict test would alert on the ordinary case. Yandex's own policy
+	// ("не допускать сбоев, превышающих MMD более чем на 24 часа") draws the
+	// line where the log becomes removable, and so does this. An age past
+	// the MMD but inside the grace is logged instead.
+	staleGrace = 24 * time.Hour
+)
+
 // Sync brings the store up to the log's current STH and verifies the result.
 func Sync(ctx context.Context, cl *ctclient.Client, l config.Log, st *store.Store, opt Options) (Result, error) {
 	opt.defaults()
@@ -93,7 +114,8 @@ func Sync(ctx context.Context, cl *ctclient.Client, l config.Log, st *store.Stor
 	if err := VerifySTHSignature(l, sth); err != nil {
 		return res, alert(st, l, "bad-sth-signature", now, map[string]any{"sth": raw, "error": err.Error()}, err.Error())
 	}
-	logf("STH size=%d ts=%s", sth.TreeSize, time.UnixMilli(int64(sth.Timestamp)).UTC().Format(time.RFC3339))
+	signed := time.UnixMilli(int64(sth.Timestamp)).UTC()
+	logf("STH size=%d ts=%s age=%s", sth.TreeSize, signed.Format(time.RFC3339), now.UTC().Sub(signed).Round(time.Second))
 
 	// Any STH the log signs is evidence; record it before anything can fail.
 	wrote, err := st.AppendSTH(*raw, now)
@@ -109,6 +131,43 @@ func Sync(ctx context.Context, cl *ctclient.Client, l config.Log, st *store.Stor
 	if found && sth.TreeSize == state.TreeSize && store.B64(sth.SHA256RootHash[:]) != state.RootHash {
 		return res, alert(st, l, "same-size-different-root", now, map[string]any{"sth": raw, "state": state},
 			fmt.Sprintf("tree_size %d has root %s, we verified %s", sth.TreeSize, store.B64(sth.SHA256RootHash[:]), state.RootHash))
+	}
+
+	// RFC 6962 §3.5: a log MUST produce on demand an STH no older than its
+	// MMD, signing the same root with a fresh timestamp when nothing was
+	// submitted. Staleness is the one form of tampering the other checks
+	// here cannot see: an STH replayed at us stays validly signed, stays
+	// consistent with what we hold and simply hides everything logged since.
+	// It is also what a log that has quietly gone dark looks like. Tested
+	// after the checks that can contradict what we already verified, since
+	// those say more, and after the STH is stored, so the evidence outlives
+	// the alert.
+	//
+	// Every comparison here is written so that a saturated age still lands in
+	// the branch it belongs to. Sub pins a difference it cannot represent at
+	// MinInt64 or MaxInt64, and negating MinInt64 overflows back to itself,
+	// so a log dated centuries ahead would slip past a test written as
+	// -age > clockSkew. A timestamp past MaxInt64 milliseconds wraps negative
+	// on the way in and reads as the distant past, which the stale branch
+	// catches.
+	mmd, age := l.MMD(), now.UTC().Sub(signed)
+	switch {
+	case age > mmd+staleGrace:
+		return res, alert(st, l, "stale-sth", now, map[string]any{
+			"sth": raw, "age_seconds": int64(age.Seconds()),
+			"mmd_seconds": int64(mmd.Seconds()), "grace_seconds": int64(staleGrace.Seconds()),
+		}, fmt.Sprintf("STH is %s old; the log's MMD is %s and nothing fresher was served",
+			age.Round(time.Second), mmd))
+	case age < -clockSkew:
+		return res, alert(st, l, "sth-from-future", now, map[string]any{
+			"sth": raw, "age_seconds": int64(age.Seconds()), "skew_seconds": int64(clockSkew.Seconds()),
+			// Negating age would overflow for a saturated one, so the two
+			// timestamps are reported rather than the distance between them.
+		}, fmt.Sprintf("STH is timestamped %s, ahead of this run at %s by more than %s",
+			signed.Format(time.RFC3339), now.UTC().Format(time.RFC3339), clockSkew))
+	case age > mmd:
+		logf("WARNING: STH is %s old, past the log's MMD of %s (alert at %s)",
+			age.Round(time.Second), mmd, mmd+staleGrace)
 	}
 
 	// Fetch [state.TreeSize, sth.TreeSize) into chunk files.

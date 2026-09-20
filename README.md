@@ -27,9 +27,11 @@ a GitHub Actions job running outside Russia:
 4. asks the log for a consistency proof between the previously verified tree
    and the new one and verifies it,
 5. records every distinct signed STH it has ever seen,
-6. snapshots `ctlog.json` and fails loudly if a log key changes or a log
-   appears that is not in `logs.json`,
-7. commits the result and summarises the names it just observed.
+6. checks that the STH the log served is not older than the log's own maximum
+   merge delay, so an old STH replayed to hide new entries cannot pass,
+7. snapshots `ctlog.json` and fails loudly if a log key or merge delay changes
+   or a log appears that is not in `logs.json`,
+8. commits the result and summarises the names it just observed.
 
 If any check fails the evidence (both STHs, the proof, the entries that were
 served) is committed under `alerts/` and an issue titled **Verification
@@ -40,6 +42,28 @@ status, so a run that silently never happens is noticed too (see
 `docs/OPERATIONS.md`). The mirror cannot
 stop a rogue certificate from being accepted, but it makes any tampering with
 the logs detectable after the fact by anyone holding a clone.
+
+## Why every six hours
+
+No policy tells a monitor how often to look. RFC 6962 §5.3 only has monitors
+loop until the STH changes, and Yandex's
+[log policy](https://browser.yandex.ru/help/ru/security/policy-ct-log) binds
+the log rather than its watchers: incorporate a certificate within the maximum
+merge delay, stay 99% available, and never fail for longer than the MMD plus
+24 hours. Every log on Yandex's list declares an MMD of 86400 seconds, so six
+hours looks at each of them four times inside the window they are judged by,
+and the 48 hours of silence that turns a stale STH into an alert here is the
+same threshold that makes a log removable there.
+
+The other half of the answer is the scheduler. GitHub queues cron runs on
+shared runners and fires them late: measured against `23 */6 * * *` over this
+repository's first week, runs started between 41 minutes and 5h31m after their
+nominal time, and consecutive runs were 4h20m to 8h50m apart. An hourly cron
+would not buy an hour of resolution, it would buy six times the commits and the
+same jitter. What a shorter period would genuinely shorten is the window in
+which a split view can be shown and healed unseen, and no single witness closes
+that window at any period. Run another witness instead; a fork with Actions
+enabled is one.
 
 ## Layout
 
@@ -147,6 +171,10 @@ to the system trust store.
 - The Ministry's 2022–2024 logs were gone before this mirror started.
 - A run every six hours means a split view that is shown to the browser for
   less than six hours and then healed could be missed. Run more witnesses.
+- The MMD check catches a log that stops serving fresh STHs, but only after
+  48 hours; between the MMD and that threshold the run logs a warning and
+  carries on, because a log that re-signs on a daily cron rather than on
+  demand sits just under its own MMD in ordinary operation.
 
 ## Русское резюме
 
@@ -155,7 +183,11 @@ CT-логов Яндекса, VK и Минцифры. Все три лога и 
 хостятся в России, вне страны копий не было. Этот репозиторий раз в шесть
 часов из GitHub Actions скачивает все новые записи, проверяет подпись STH,
 пересчитывает Merkle-корень по всем сохранённым записям, проверяет
-consistency proof, фиксирует каждый подписанный STH и коммитит результат.
+consistency proof и свежесть STH относительно MMD лога, фиксирует каждый
+подписанный STH и коммитит результат. Период в шесть часов не предписан
+никакой политикой: MMD всех логов в списке равен суткам, так что каждый лог
+проверяется четыре раза за это окно, а чаще запускать бессмысленно —
+планировщик GitHub опаздывает на 0,7–5,5 часа.
 Любое расхождение попадает в `alerts/` и в issue. Список имён, на которые
 выписаны сертификаты, публикуется после каждого запуска на
 <https://ru-ct-mirror.github.io/ru-ct-mirror/> (поиск, группировка по домену

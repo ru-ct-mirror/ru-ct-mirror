@@ -28,3 +28,23 @@ func TestCompare(t *testing.T) {
 		t.Fatalf("want key change detected, got %+v", d)
 	}
 }
+
+// An unstated mmd on either side means RFC 6962's own 24 hours, so the two
+// files agree until the published value actually moves.
+func TestCompareChecksMMD(t *testing.T) {
+	cfg := &config.File{Logs: []config.Log{{Operator: "a", Shard: "1", URL: "https://a.example/1/",
+		Key:   "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEAQAIwfEbBkUu1RDSLnlcGoVlMbRc8wQC1yusWLBDR8c3cJIyk0HtI+Uwfga99z4/7Mt8fkSwVTGQkMkiv4UsTw==",
+		LogID: "Vh7HRN8a9wLmJoOt38SVz3WjGwxs6KDH6gEDMJC3SIU="}}}
+	if d, _ := Compare([]byte(sample), cfg); len(d.Retimed) != 0 {
+		t.Fatalf("86400 published against an unstated mmd is not drift, got %+v", d.Retimed)
+	}
+	cfg.Logs[0].MMDSeconds = 86400
+	if d, _ := Compare([]byte(sample), cfg); len(d.Retimed) != 0 {
+		t.Fatalf("matching mmd reported as drift: %+v", d.Retimed)
+	}
+	cfg.Logs[0].MMDSeconds = 3600
+	d, _ := Compare([]byte(sample), cfg)
+	if len(d.Retimed) != 1 || d.Empty() {
+		t.Fatalf("want the mmd change detected, got %+v", d)
+	}
+}

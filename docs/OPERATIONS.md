@@ -4,8 +4,8 @@
 
 New yearly shards appear in `ctlog.json` around November. The scheduled job
 then fails with `ALERT log list: log not in logs.json` until a maintainer adds
-the shard to `logs.json` by hand, copying `url`, `key` and `log_id` from
-`loglist/ctlog.json` and writing `key_source`. Run
+the shard to `logs.json` by hand, copying `url`, `key`, `log_id` and `mmd`
+from `loglist/ctlog.json` and writing `key_source`. Run
 `go run ./cmd/ructmirror sync -only <operator>/<shard>` once locally, then
 commit `logs.json` together with the new `data/` directory.
 
@@ -158,9 +158,11 @@ and serve `_site/` (`python3 -m http.server -d _site`).
 
 ## Two kinds of issues
 
-- **Verification failure <date>**: a log or the log list failed a
-  cryptographic check (`ructmirror` exited 2, or offline `verify` failed).
-  Evidence is committed under `alerts/`. This is the one that matters.
+- **Verification failure <date>**: a log or the log list contradicted
+  something the mirror already holds, or served an STH too old to be a
+  current statement about the tree (`ructmirror` exited 2, or offline
+  `verify` failed). Evidence is committed under `alerts/`. This is the one
+  that matters.
 - **Sync error <date>**: an operational problem, typically a log that could
   not be reached or returned garbage (`ructmirror` exited 1). Nothing was
   verified wrong, but the mirror is blind until it clears. Persisting for more
@@ -180,6 +182,28 @@ saw. Kinds:
   signed. The served chunk is kept next to the alert as evidence.
 - `inconsistent`: the log's consistency proof between the previous tree and
   the new one does not verify.
+- `stale-sth`: the log served an STH older than its MMD plus 24 hours. The
+  STH still verifies and is still consistent with what we hold: that is the
+  point. Either the log has stopped re-signing, or an old STH is being
+  replayed at us to hide everything logged since it was signed, and from
+  outside the two look identical. Check the log by hand
+  (`curl <url>ct/v1/get-sth`) before deciding. A log that has genuinely gone
+  dark is marked `"disabled": true` with a note, the way the Ministry's
+  2022-2024 shards were; a log that is fresh for everyone but us is the
+  finding this mirror exists for.
+- `sth-from-future`: the log's STH is timestamped more than ten minutes ahead
+  of the runner's clock. An SCT promises inclusion within the MMD of its own
+  timestamp, so a log running fast quietly grants itself extra time.
+
+An STH that is older than the MMD but inside the 24-hour grace only prints a
+`WARNING` line in the run log. Both thresholds come from Yandex's policy,
+which treats a failure exceeding the MMD by more than 24 hours as grounds for
+removing the log; VK re-signs its closed shards once a day at 03:42 and
+nothing more, so a stricter test would alert on ordinary operation. The `mmd`
+field in `logs.json` holds the value copied from `ctlog.json` for each shard
+still on Yandex's list; a shard without one is held to RFC 6962's own 24
+hours. A shard whose published MMD moves is reported as
+`ALERT log list: mmd changed`, because that value is what "stale" means.
 
 In every case `state.json` keeps the last verified tree and the job exits
 non-zero after committing the evidence.
