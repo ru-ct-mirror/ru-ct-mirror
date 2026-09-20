@@ -21,7 +21,14 @@ env:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    # Pinned for the same reason the actions are pinned to commit SHAs: the
+    # mirror should change when we change it. ubuntu-latest becomes 26.04
+    # between 19 October and 19 November 2026 (actions/runner-images#14748),
+    # so this takes the same image a month early and on our own terms, with a
+    # run every six hours to show whether it holds. Bump this deliberately,
+    # and before the image is retired:
+    # https://github.com/actions/runner-images
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -31,7 +38,9 @@ jobs:
         run: |
           [ -n "$HC_PING_URL" ] || exit 0
           # rid ties the start and the end ping together and must be a UUID.
-          rid="$(uuidgen)"
+          # uuidgen comes from uuid-runtime, which the image is not obliged to
+          # carry; the kernel will hand out a v4 UUID either way.
+          rid="$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
           echo "HC_RID=$rid" >> "$GITHUB_ENV"
           curl -fsS -m 10 --retry 3 -o /dev/null "$HC_PING_URL/start?rid=$rid" || true
       # ructmirror exits 2 when a log failed verification (evidence written),
@@ -79,7 +88,7 @@ jobs:
           # its own commands out of the log. Fence the echo with a token the
           # printed text cannot guess, so a name beginning ::error:: or
           # ::add-mask:: is nothing but text.
-          fence="$(uuidgen)"
+          fence="$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
           echo "::stop-commands::$fence"
           cat summary.log || true
           cat commit-msg.txt || true
@@ -160,7 +169,7 @@ jobs:
     needs: sync
     if: always()
     continue-on-error: true
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04 # pinned with the sync job above
     permissions:
       contents: read
       pages: write

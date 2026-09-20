@@ -12,6 +12,16 @@ commit `logs.json` together with the new `data/` directory.
 A shard whose host disappears should be marked `"disabled": true` with a
 `note`; its data stays in the repository.
 
+## The runner image
+
+Both jobs pin `runs-on: ubuntu-26.04` rather than `ubuntu-latest`, so the
+mirror changes when a maintainer changes it and not when GitHub rolls a label
+over. The cost is that the pin has to be bumped by hand: watch
+<https://github.com/actions/runner-images> for the retirement of the image
+and move both jobs together. A retired image means the workflow finds no
+runner, which is silence rather than a failure — the healthchecks alert
+below is what catches it.
+
 ## Retiring data
 
 The repository stays small enough for GitHub for years, but if it ever grows
