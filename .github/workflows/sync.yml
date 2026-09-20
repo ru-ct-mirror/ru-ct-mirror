@@ -84,11 +84,19 @@ jobs:
           cat summary.log || true
           cat commit-msg.txt || true
           echo "::$fence::"
-          # Second stage of the rollout: commit with -F commit-msg.txt when the
-          # message above has proved itself over a few real runs, keeping the
-          # -m form as the fallback for an empty commit-msg.txt.
-          git -c user.name=ru-ct-mirror -c user.email=ru-ct-mirror@proton.me \
-            commit -q -m "sync $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          # The subject test covers both an empty file, from a summary that
+          # failed or timed out, and a truncated one, from a summary the kill
+          # deadline caught mid-write. Either way the bare subject is what
+          # every commit carried before the summary existed, so the data still
+          # gets published.
+          if head -n 1 commit-msg.txt 2>/dev/null | grep -q '^sync [0-9]'; then
+            git -c user.name=ru-ct-mirror -c user.email=ru-ct-mirror@proton.me \
+              commit -q --cleanup=whitespace -F commit-msg.txt
+          else
+            echo "no usable summary; committing with the bare subject"
+            git -c user.name=ru-ct-mirror -c user.email=ru-ct-mirror@proton.me \
+              commit -q -m "sync $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          fi
           git push
       - name: Open an issue on failure
         if: always() && (steps.sync.outputs.code != '0' || steps.verify.outputs.code != '0')

@@ -95,9 +95,9 @@ run added — the only files a run ever adds — and writes the commit message f
 them: how many entries each shard gained, and the DNS names those entries
 carry, marking with `+` every name the mirror had never seen before. IDN names
 are shown in Unicode next to the stored form. The list is capped at 100 names;
-`ructmirror domains` and the site always have the whole picture. The workflow
-prints that summary on every run and is being switched over to commit with it
-(see `docs/OPERATIONS.md`).
+`ructmirror domains` and the site always have the whole picture. So
+`git log` is a searchable feed of newly issued names, with no network and no
+site (see `docs/OPERATIONS.md`).
 
 ```
 ./ructmirror summary $(git diff --cached --name-only --diff-filter=A \

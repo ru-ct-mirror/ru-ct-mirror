@@ -83,11 +83,10 @@ and each label is written in a single script. That strictness is deliberate:
 by the rule above, a wrong or hostile name in a commit message cannot be taken
 back.
 
-Rollout: the workflow currently computes the message, prints it into the job
-log and sends its first lines to healthchecks, but still commits with the bare
-subject. Once a few real runs have been read, switch the commit in
-`.github/workflows/sync.yml` to `-F commit-msg.txt`, keeping the `-m` form for
-when `commit-msg.txt` comes out empty.
+The workflow also prints the message into the job log and sends its first
+lines to healthchecks, so a run whose push fails still says what it saw. The
+log copy is fenced with `::stop-commands::` and a random token, because the
+runner reads its own commands out of the log and a name is not ours to trust.
 
 ## Notifications without GitHub e-mail
 
