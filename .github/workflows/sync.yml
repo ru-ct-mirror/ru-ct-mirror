@@ -31,9 +31,8 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          submodules: true
       - name: Report start to healthchecks
         run: |
           [ -n "$HC_PING_URL" ] || exit 0
@@ -43,11 +42,59 @@ jobs:
           rid="$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
           echo "HC_RID=$rid" >> "$GITHUB_ENV"
           curl -fsS -m 10 --retry 3 -o /dev/null "$HC_PING_URL/start?rid=$rid" || true
+      # The tool lives in ru-ct-mirror/ructmirror and is pinned here as the
+      # submodule at code/, so every commit of data names the exact code that
+      # verified it. This step follows that repository's main branch and
+      # records the move as its own commit before the run uses it, which is
+      # why merging there is the review gate (see docs/OPERATIONS.md). The
+      # bump is pushed first so even a run that then fails has said which
+      # code it was running.
+      - name: Follow the code repository
+        env:
+          TZ: UTC
+        run: |
+          # Compare the two commits rather than `git diff -- code`, which
+          # also reports a submodule whose working tree is merely dirty.
+          old="$(git rev-parse HEAD:code)"
+          git submodule update --remote --checkout code
+          new="$(git -C code rev-parse HEAD)"
+          if [ "$old" = "$new" ]; then
+            echo "code unchanged at ${old:0:12}"
+            exit 0
+          fi
+          # checkout clones the submodule shallow; old..new needs the history.
+          git -C code fetch -q --unshallow origin 2>/dev/null || true
+          {
+            echo "code: ${old:0:12}..${new:0:12}"
+            echo
+            git -C code log --oneline --no-decorate "$old..$new" 2>/dev/null || true
+          } > bump-msg.txt
+          cat bump-msg.txt
+          git add code
+          git -c user.name=ru-ct-mirror -c user.email=ru-ct-mirror@proton.me \
+            commit -q --cleanup=whitespace -F bump-msg.txt
+          # A bump that cannot be published must not cost us the run. Put the
+          # submodule back to the pointer HEAD records, so the binary this run
+          # builds is the one its commit will name, and try again in six hours.
+          git push || {
+            echo "bump push failed; running the pinned code instead"
+            git reset -q --hard HEAD~1
+            git submodule update --checkout code
+          }
+      # After the bump, so the toolchain and the dependency cache both come
+      # from the code this run is about to build. cache-dependency-path is
+      # not optional: setup-go caches by default and looks for go.mod in the
+      # workspace root only, which this repository no longer has, so without
+      # it the step fails outright rather than merely missing the cache.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: code/go.mod
+          cache-dependency-path: code/go.sum
       # ructmirror exits 2 when a log failed verification (evidence written),
       # 1 for operational errors such as an unreachable log. It must run as a
       # binary: `go run` collapses every non-zero status to 1.
       - name: Build
-        run: go build -o ructmirror ./cmd/ructmirror
+        run: go build -C code -o ../ructmirror ./cmd/ructmirror
       - name: Sync all logs
         id: sync
         run: |
@@ -183,11 +230,17 @@ jobs:
           # github.sha is the commit that triggered the run, i.e. from before
           # sync pushed. Fetch the branch tip instead.
           ref: ${{ github.ref }}
+          # The tip also carries the submodule pointer the sync job just
+          # published, so the site is built by the same code that wrote the
+          # data it is built from.
+          submodules: true
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: code/go.mod
+          # Required, for the reason given in the sync job above.
+          cache-dependency-path: code/go.sum
       - name: Build
-        run: go build -o ructmirror ./cmd/ructmirror
+        run: go build -C code -o ../ructmirror ./cmd/ructmirror
       # The site is derived from the entries, not from anything the logs
       # signed. Publish only what still hashes to the verified roots.
       - name: Offline verification of the data the site is built from
@@ -195,7 +248,7 @@ jobs:
       - name: Build site
         run: |
           mkdir -p _site
-          cp site/index.html _site/
+          cp code/site/index.html _site/
           ./ructmirror domains > _site/domains.tsv
           ./ructmirror domains -active > _site/domains-active.tsv
           tail -n +2 _site/domains-active.tsv | cut -f1 > _site/domains-active.txt

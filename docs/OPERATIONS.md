@@ -5,12 +5,52 @@
 New yearly shards appear in `ctlog.json` around November. The scheduled job
 then fails with `ALERT log list: log not in logs.json` until a maintainer adds
 the shard to `logs.json` by hand, copying `url`, `key`, `log_id` and `mmd`
-from `loglist/ctlog.json` and writing `key_source`. Run
-`go run ./cmd/ructmirror sync -only <operator>/<shard>` once locally, then
-commit `logs.json` together with the new `data/` directory.
+from `loglist/ctlog.json` and writing `key_source`. Then run it once locally
+and commit `logs.json` together with the new `data/` directory:
+
+```
+go build -C code -o ../ructmirror ./cmd/ructmirror
+./ructmirror sync -only <operator>/<shard>
+```
 
 A shard whose host disappears should be marked `"disabled": true` with a
 `note`; its data stays in the repository.
+
+## Updating the code
+
+The tool lives in [ru-ct-mirror/ructmirror](https://github.com/ru-ct-mirror/ructmirror)
+and is pinned here as the submodule at `code/`. Every run starts by moving
+that pin to the tip of the tool's `main` and committing the move, so **a merge
+to `main` there is the decision that the next run of this mirror uses that
+code**. There is no second gate: protect `main` in that repository (pull
+requests only, `test.yml` required, no force-push) and the review happens
+where the change is written.
+
+The bump is its own commit, subject `code: <old>..<new>`, body the subjects of
+the commits it brings in. It is pushed before the sync so that even a run
+which then fails has said which code it was running, and a bump whose push
+loses a race is dropped rather than retried: the run puts the submodule back
+to the pinned commit, builds that, and the next run tries again. Because the
+subject is not `sync <timestamp>`, `git log --grep='^sync [0-9]'` still
+selects exactly the mirroring commits.
+
+To move the pin by hand, or to hold it deliberately at an older commit, do it
+in a commit of your own:
+
+```
+git -C code fetch
+git -C code checkout <sha>
+git add code
+git commit
+```
+
+A hand-made pin survives exactly one run: the next `sync` follows `main`
+again. To hold an older commit for longer, revert or fix forward in the tool's
+repository instead.
+
+The pin is part of the evidence, the same way the workflow pins its actions by
+SHA and its runner image by name: a commit of data names the code that
+verified it, and anyone with a clone can check out that pair and re-run it.
 
 ## The runner image
 
@@ -138,7 +178,8 @@ the public record.
 ## GitHub Pages
 
 The `pages` job in `sync.yml` runs after every `sync` job, successful or not,
-and deploys the output of `ructmirror domains` together with `site/index.html`
+and deploys the output of `ructmirror domains` together with
+`code/site/index.html`
 and a `meta.json` to <https://ru-ct-mirror.github.io/ru-ct-mirror/>. It
 checks out the branch tip (the commit `sync` just pushed), so the site is
 never more than one run behind the data. Before building it runs

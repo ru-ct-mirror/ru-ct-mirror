@@ -1,0 +1,4 @@
+[submodule "code"]
+	path = code
+	url = https://github.com/ru-ct-mirror/ructmirror
+	branch = main

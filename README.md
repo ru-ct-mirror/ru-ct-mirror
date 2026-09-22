@@ -20,6 +20,8 @@ That means an operator could rewrite history and no one outside the country
 would hold a contradicting copy. This repository is that copy. Every six hours
 a GitHub Actions job running outside Russia:
 
+0. records which version of the tool it is about to run, by moving the `code/`
+   submodule to the tip of that repository and committing the move,
 1. downloads every new entry from every shard,
 2. verifies the log's signature on the Signed Tree Head (STH),
 3. recomputes the Merkle root from **all** locally stored entries and requires
@@ -68,6 +70,7 @@ enabled is one.
 ## Layout
 
 ```
+code/                              the mirror tool, a submodule pinned to the commit that wrote this data
 logs.json                          the shards we mirror, with their public keys and provenance
 roots/                             pinned TLS trust anchors used ONLY for *.ctlog.digital.gov.ru
 loglist/ctlog.json                 latest snapshot of Yandex Browser's log list (history in git)
@@ -87,13 +90,28 @@ Operators and shards: `yandex/2022`–`2027` (`ct-agate.yandex.net`),
 (`*.ctlog.digital.gov.ru`). The Ministry's 2022–2024 shards no longer resolve
 in DNS; their keys are kept in `logs.json` as `disabled` for the record.
 
+The tool that writes all of this is
+[ru-ct-mirror/ructmirror](https://github.com/ru-ct-mirror/ructmirror), and
+`code/` is that repository pinned at one commit. The pin is part of the
+evidence: a commit here names the exact code that verified the data in it, the
+way the workflow names its actions by SHA. The data keeps the repository it
+has always had, because a single commit is what shows all three logs, and the
+list of trusted logs, saying the same thing at the same moment.
+
 ## Verify a clone yourself
 
 ```
-git clone https://github.com/ru-ct-mirror/ru-ct-mirror
+git clone --recurse-submodules https://github.com/ru-ct-mirror/ru-ct-mirror
 cd ru-ct-mirror
-go run ./cmd/ructmirror verify
+go build -C code -o ../ructmirror ./cmd/ructmirror
+./ructmirror verify
 ```
+
+Without `--recurse-submodules` the clone arrives with `code/` empty;
+`git submodule update --init` fills it in. Build the binary into the root and
+run it from there, as the workflow does: the tool takes the mirror as `-root`,
+which defaults to the working directory, and `summary` reads chunk paths
+relative to that directory rather than to `-root`.
 
 `verify` needs no network. For every shard it re-hashes all stored entries,
 checks the root against `state.json` and against the last STH in `sth.jsonl`,
@@ -101,8 +119,8 @@ and checks that STH's signature with the key in `logs.json`. Corrupt or
 truncate any chunk and it fails.
 
 To compare the mirror with what the logs say right now, run
-`go run ./cmd/ructmirror sync` in the clone; it performs the same checks as
-the scheduled job.
+`./ructmirror sync` in the clone; it performs the same checks as the
+scheduled job.
 
 ## See what has been issued
 
@@ -131,7 +149,7 @@ site (see `docs/OPERATIONS.md`).
 The same list from a clone, without the network:
 
 ```
-go run ./cmd/ructmirror domains -active
+./ructmirror domains -active
 ```
 
 prints one line per DNS name that appears in a stored certificate (SAN or a
@@ -142,11 +160,13 @@ CA. Drop `-active` to include expired names. Output is tab-separated for
 
 ## Run your own witness
 
-Fork the repository and enable GitHub Actions on the fork, or run
-`ructmirror sync` from any cron outside the operators' reach. Two mirrors that
-disagree with each other, or with the log, are exactly the evidence CT is
-designed to produce. The more independent witnesses, the less any single one
-has to be trusted.
+Fork this repository and enable GitHub Actions on the fork, or run
+`ructmirror sync` from any cron outside the operators' reach. A fork needs
+nothing else: the workflow checks the submodule out over public HTTPS and
+commits with the token GitHub gives the run, so no key of ours and no key of
+yours is involved. Two mirrors that disagree with each other, or with the
+log, are exactly the evidence CT is designed to produce. The more independent
+witnesses, the less any single one has to be trusted.
 
 ## Where the log keys come from
 
@@ -191,9 +211,12 @@ consistency proof и свежесть STH относительно MMD лога,
 Любое расхождение попадает в `alerts/` и в issue. Список имён, на которые
 выписаны сертификаты, публикуется после каждого запуска на
 <https://ru-ct-mirror.github.io/ru-ct-mirror/> (поиск, группировка по домену
-второго уровня, файлы TSV/TXT). Проверить свой клон без
-сети: `go run ./cmd/ructmirror verify`. Поднять второго свидетеля: форк и
-включить Actions.
+второго уровня, файлы TSV/TXT). Сам инструмент живёт в отдельном
+репозитории и подключён здесь сабмодулем `code/`, закреплённым на том
+коммите, который записал эти данные. Проверить свой клон без сети:
+`git clone --recurse-submodules`, затем
+`go build -C code -o ../ructmirror ./cmd/ructmirror && ./ructmirror verify`.
+Поднять второго свидетеля: форк и включить Actions.
 
 ## License
 
