@@ -208,6 +208,14 @@ and serve `_site/` (`python3 -m http.server -d _site`).
   not be reached or returned garbage (`ructmirror` exited 1). Nothing was
   verified wrong, but the mirror is blind until it clears. Persisting for more
   than a day deserves a look: a log that went away is itself a finding.
+  Before giving up on a log the tool retries 5xx and network errors for about
+  two minutes with exponential backoff; the other shards on a host that did
+  not answer get one attempt each. Shards that did answer are still synced,
+  verified and committed.
+
+Both carry an excerpt of the run's log, ending with the line that names the
+shards that failed. A later failing run on the same UTC day comments on the
+open issue instead of opening another, so one issue shows the whole day.
 
 ## Reading a verification failure
 

@@ -166,15 +166,37 @@ jobs:
           else
             title="Sync error $(date -u +%Y-%m-%d)"
           fi
-          body="Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"$'\n'
-          body+="sync exit code: $SYNC_CODE, verify exit code: $VERIFY_CODE"$'\n\n'
-          for f in $(git ls-files -o -c data/*/*/alerts | sort | tail -n 20); do
-            body+="- $f"$'\n'
-          done
-          if gh issue list --state open --search "\"$title\" in:title" --json number --jq 'length' | grep -qv '^0$'; then
-            echo "issue already open"
+          # The body quotes the run's own output: which shards failed and
+          # what the log servers answered. That text comes from servers we
+          # are watching, so it goes in a code fence whose backtick run is
+          # longer than any the excerpt contains, and the body travels as a
+          # file, never through the shell's argument list.
+          {
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "sync exit code: $SYNC_CODE, verify exit code: $VERIFY_CODE"
+            echo
+            for f in $(git ls-files -o -c data/*/*/alerts | sort | tail -n 20); do
+              echo "- $f"
+            done
+            { echo "== sync"; grep -v -E ' 0 chunk\(s\), new STH: false$| STH size=' sync.log 2>/dev/null | tail -n 40
+              echo; echo "== verify"; grep -v ': ok, ' verify.log 2>/dev/null | tail -n 20
+            } > excerpt.txt || true
+            longest="$(grep -o '`*' excerpt.txt | awk '{ if (length > n) n = length } END { print n + 0 }')"
+            fence="$(printf '%*s' "$(( longest < 3 ? 3 : longest + 1 ))" '' | tr ' ' '`')"
+            echo
+            echo "$fence"
+            cat excerpt.txt
+            echo "$fence"
+          } > issue-body.txt
+          # One issue per UTC day; later failing runs that day add to it, so
+          # the issue shows how long the outage lasted and what each run saw.
+          # The search is fuzzy; keep only an exact title match.
+          open="$(ISSUE_TITLE="$title" gh issue list --state open --search "\"$title\" in:title" \
+                    --json number,title --jq '[.[] | select(.title == env.ISSUE_TITLE)][0].number // empty')"
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file issue-body.txt
           else
-            gh issue create --title "$title" --body "$body"
+            gh issue create --title "$title" --body-file issue-body.txt
           fi
           exit 1
       - name: Report outcome to healthchecks
