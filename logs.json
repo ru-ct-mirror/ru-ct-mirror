@@ -169,7 +169,9 @@
       "log_id": "geCHp9endLWg6BvNE84di766qzqf01beMSQqeKy44Dc=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAETWXlfpI1faK8Kl1WxVMKRgJj/zL/Fdr5QJ/khIrxHVFKViDZkqdBlxZ2SLSOSHbzHITeRvBvBnh+qZ5rHIsZ3Q==",
       "tls": "russian-trusted",
-      "key_source": "yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09) (unnamed entry; attributed to this shard by verifying its STH signature)"
+      "key_source": "yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09) (unnamed entry; attributed to this shard by verifying its STH signature)",
+      "disabled": true,
+      "note": "Host answered HTTP 503 from 2026-10-14 and no longer resolves in DNS since 2026-10-17 (checked 2026-10-27), like the 2022-2024 shards before it. The mirror holds the log's final tree: 6106 entries, STH of 2026-09-13."
     },
     {
       "operator": "digital-gov",
