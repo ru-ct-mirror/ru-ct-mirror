@@ -32,7 +32,9 @@
       "log_id": "qvDwbBTxANU/Wtd9zaAe7b5Mjf6SSyMOi7iSTvywv+w=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJS/ONg5e4XOlh/hRbXwPIY6lcAcVdWcvMiVQ+o7r7JqvYlifXQbunZOshPo9D22wa5haIjUjWS4Xpi8auewVpw==",
       "tls": "system",
-      "key_source": "yandex/domestic-roots-patch: domestic_roots.patch kDomesticCTLogList (2022-08-05); yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21)"
+      "key_source": "yandex/domestic-roots-patch: domestic_roots.patch kDomesticCTLogList (2022-08-05); yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21)",
+      "disabled": true,
+      "note": "Retired automatically on 2026-10-28: no longer in ctlog.json (v1.235, 2026-09-23) and all 14 certificates expired by 2023-01-17. Final tree: 14 entries, STH of 2026-09-13."
     },
     {
       "operator": "yandex",
@@ -42,7 +44,9 @@
       "log_id": "3q1pSgrz1CuGgkHUXu8FY/vPalFD4txiGoRf6J9Qm90=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEhxjLY9zBQZk5VmyjKd/Ej6KfBLNE2OKnd+LdyXIsa1kPkXqyVlLWEfQE7bYSZOt2UXYscRsVFOyqxwGYU0yjBw==",
       "tls": "system",
-      "key_source": "yandex/domestic-roots-patch: domestic_roots.patch kDomesticCTLogList (2022-08-05); yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21); yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09)"
+      "key_source": "yandex/domestic-roots-patch: domestic_roots.patch kDomesticCTLogList (2022-08-05); yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21); yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09)",
+      "disabled": true,
+      "note": "Retired automatically on 2026-10-28: no longer in ctlog.json (v1.235, 2026-09-23) and all 3097 certificates expired by 2024-01-30. Final tree: 3097 entries, STH of 2026-09-13."
     },
     {
       "operator": "yandex",
@@ -52,7 +56,9 @@
       "log_id": "lbNyiSAplLRaDFkkJKRZIP0UsSRnxHSLZzoD4BJVM9c=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEZf3JmDiqxpMZO3Rw3ngtmd2uSlGdMpLtNEVjmXKrXSEtIl4L7n3gCHq/+upBALiMalQP1E47Epx0qFGXELA5lQ==",
       "tls": "system",
-      "key_source": "yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21); yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09)"
+      "key_source": "yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21); yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09)",
+      "disabled": true,
+      "note": "Retired automatically on 2026-10-28: no longer in ctlog.json (v1.235, 2026-09-23) and all 5099 certificates expired by 2024-12-31. Final tree: 5099 entries, STH of 2026-09-13."
     },
     {
       "operator": "yandex",
@@ -62,7 +68,9 @@
       "log_id": "AK5JUqPU3NHFnCCdj1yMRrYyI2hpT8AhGrUT+YUvLD4=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE/6VEmCoHZsAs/TEny2jmYieIyzzo6ezT1J6YITXziFPh4ySWVCHHN1MLzxpOvcdZYoTwGTS8zjjuJB2P9esj3g==",
       "tls": "system",
-      "key_source": "yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09) (unnamed entry; attributed to this shard by verifying its STH signature)"
+      "key_source": "yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09) (unnamed entry; attributed to this shard by verifying its STH signature)",
+      "disabled": true,
+      "note": "Retired automatically on 2026-10-28: no longer in ctlog.json (v1.235, 2026-09-23) and all 6847 certificates expired by 2025-12-31. Final tree: 6847 entries, STH of 2026-09-13."
     },
     {
       "operator": "yandex",
@@ -94,7 +102,9 @@
       "log_id": "iG1OOMYisXO8V9x20cax62WBMNFdStLmH2drD13U+HY=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAELmgV+HQuvMs7MYKD1QS+Z9A8Jq72ORb0KicXDbtPozC8q3L/q4Nz93BZdVEYooY8gvGVExhwuaWvWEN7KE57FA==",
       "tls": "system",
-      "key_source": "yandex/domestic-roots-patch: domestic_roots.patch kDomesticCTLogList (2022-08-05); yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21)"
+      "key_source": "yandex/domestic-roots-patch: domestic_roots.patch kDomesticCTLogList (2022-08-05); yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21)",
+      "disabled": true,
+      "note": "Retired automatically on 2026-10-28: no longer in ctlog.json (v1.235, 2026-09-23) and all 4 certificates expired by 2022-12-26. Final tree: 4 entries, STH of 2026-09-13."
     },
     {
       "operator": "vk",
@@ -104,7 +114,9 @@
       "log_id": "6ZZ4aoGLsN0Eju61DrPM1QW9JU7I9VhOrVAlCgoEyNU=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEUidX4EB6GdgGoQC0u1VOokaLh7cfN66CTZ/zLc9brtppE9LNNyRZ9MXl+YTqQ/YxNi/CkXfbV9xMC4tVKN//ng==",
       "tls": "system",
-      "key_source": "yandex/domestic-roots-patch: domestic_roots.patch kDomesticCTLogList (2022-08-05); yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21); yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09)"
+      "key_source": "yandex/domestic-roots-patch: domestic_roots.patch kDomesticCTLogList (2022-08-05); yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21); yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09)",
+      "disabled": true,
+      "note": "Retired automatically on 2026-10-28: no longer in ctlog.json (v1.235, 2026-09-23) and all 3100 certificates expired by 2023-12-29. Final tree: 3100 entries, STH of 2026-09-13."
     },
     {
       "operator": "vk",
@@ -114,7 +126,9 @@
       "log_id": "rDw/UOE3a7Y0dFbd8Tuykdn+zHtt8vEjum/yqNS5okI=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAExq6Wp2YmLNAhaM5DkoPr0K6Xa7mX9cq0rm87NGX26BtpUMimgwuWBLFm0ImD2dgO7JdZJJg6T9qG9EqOWg1o2g==",
       "tls": "system",
-      "key_source": "yandex/domestic-roots-patch: domestic_roots.patch kDomesticCTLogList (2022-08-05); yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21); yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09)"
+      "key_source": "yandex/domestic-roots-patch: domestic_roots.patch kDomesticCTLogList (2022-08-05); yandex/domestic-roots-mobile: android/nuc/src/main/res/raw/nuc_ctlog.json (v1.43, 2022-12-21); yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09)",
+      "disabled": true,
+      "note": "Retired automatically on 2026-10-28: no longer in ctlog.json (v1.235, 2026-09-23) and all 5101 certificates expired by 2024-12-31. Final tree: 5101 entries, STH of 2026-09-13."
     },
     {
       "operator": "vk",
@@ -124,7 +138,9 @@
       "log_id": "bCNAWMiH5pnuZFXTlW/j/62SNDlIhVdGoZ1FcjNaa+k=",
       "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9QNHyel7QqVc/uyN3kYIjg4jGTAsCNEGij5n/09wrwlr7J6VP1p+GsH/PDwMPG3xsQaRwnF9rBqKksvIfE/gHg==",
       "tls": "system",
-      "key_source": "yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09) (unnamed entry; attributed to this shard by verifying its STH signature)"
+      "key_source": "yandex/domestic-roots-mobile@a233cc4a70: ios/builtin_logs.cc (2024-01-09) (unnamed entry; attributed to this shard by verifying its STH signature)",
+      "disabled": true,
+      "note": "Retired automatically on 2026-10-28: no longer in ctlog.json (v1.235, 2026-09-23) and all 6828 certificates expired by 2025-12-31. Final tree: 6828 entries, STH of 2026-09-13."
     },
     {
       "operator": "vk",
