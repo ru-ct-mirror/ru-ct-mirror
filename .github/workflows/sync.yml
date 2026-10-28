@@ -161,6 +161,7 @@ jobs:
       # unseen either: say so in an issue of its own, after the commit that
       # carries it has been pushed.
       - name: Open an issue when the set of shards changed
+        id: shards
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
@@ -239,6 +240,7 @@ jobs:
           SYNC_CODE: ${{ steps.sync.outputs.code }}
           VERIFY_CODE: ${{ steps.verify.outputs.code }}
           PUBLISH: ${{ steps.publish.outcome }}
+          SHARDS: ${{ steps.shards.outcome }}
         run: |
           [ -n "$HC_PING_URL" ] || exit 0
           # healthchecks reads the exit status from the URL: 0 is success,
@@ -248,9 +250,14 @@ jobs:
           code="${SYNC_CODE:-3}"
           if [ "${VERIFY_CODE:-3}" != "0" ] && [ "$code" != "2" ]; then code="${VERIFY_CODE:-3}"; fi
           if [ "$code" = "0" ] && [ "$PUBLISH" != "success" ]; then code=4; fi
+          # The run changed logs.json and could not say so in an issue. The
+          # change is committed, so no later run will try again: this ping is
+          # the only other place it can be noticed.
+          if [ "$code" = "0" ] && [ "$SHARDS" = "failure" ]; then code=5; fi
           {
             echo "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-            echo "sync exit code: ${SYNC_CODE:-none}, verify exit code: ${VERIFY_CODE:-none}, publish: ${PUBLISH:-none}"
+            echo "sync exit code: ${SYNC_CODE:-none}, verify exit code: ${VERIFY_CODE:-none}, publish: ${PUBLISH:-none}, shard issue: ${SHARDS:-none}"
+            echo; echo "== log list"; grep -E '^log list: (adopted|retired) ' sync.log 2>/dev/null || true
             echo; echo "== sync"; grep -v -E ' 0 chunk\(s\), new STH: false$' sync.log 2>/dev/null | tail -n 40
             echo; echo "== verify"; grep -v ': ok, ' verify.log 2>/dev/null | tail -n 20
             # An idle run never writes commit-msg.txt, and the step runs under

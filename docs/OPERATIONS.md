@@ -202,8 +202,10 @@ never happens is noticed as well.
    `/<exit status>` at the end: `0` for a clean run, `1` for a sync error
    (a log was unreachable), `2` for a verification failure, `3` when a step
    never produced a status because the job itself broke, `4` when everything
-   verified but the commit could not be pushed. The request body,
-   visible in the check's log on healthchecks.io, holds the run URL and the
+   verified but the commit could not be pushed, `5` when the run adopted or
+   retired a shard and pushed that, but could not open the **Log list
+   change** issue saying so. The request body, visible in the check's log on
+   healthchecks.io, holds the run URL, any shards adopted or retired, and the
    interesting lines of the sync and verify output.
 
 Configure healthchecks to alert on failed pings as well as on missed ones;
