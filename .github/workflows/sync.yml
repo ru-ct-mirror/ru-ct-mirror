@@ -113,7 +113,9 @@ jobs:
         env:
           TZ: UTC
         run: |
-          git add data loglist
+          # sync rewrites logs.json when it adopts a new shard from ctlog.json
+          # or retires one whose certificates have all expired.
+          git add data loglist logs.json
           if git diff --cached --quiet; then
             echo "nothing new"
             exit 0
@@ -154,6 +156,38 @@ jobs:
               commit -q -m "sync $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           fi
           git push
+      # Adopting or retiring a shard is a change to what the mirror watches,
+      # made without a maintainer. It is not a failure, but it must not pass
+      # unseen either: say so in an issue of its own, after the commit that
+      # carries it has been pushed.
+      - name: Open an issue when the set of shards changed
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          grep -E '^log list: (adopted|retired) ' sync.log > shards.txt 2>/dev/null || exit 0
+          title="Log list change $(date -u +%Y-%m-%d)"
+          # The lines quote ctlog.json, which is served from Russia; fence
+          # them as the failure issue below does.
+          longest="$(grep -o '`*' shards.txt | awk '{ if (length > n) n = length } END { print n + 0 }')"
+          fence="$(printf '%*s' "$(( longest < 3 ? 3 : longest + 1 ))" '' | tr ' ' '`')"
+          {
+            echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            echo "This run changed logs.json on its own. Check the commit it pushed;"
+            echo "docs/OPERATIONS.md says what each change means and how to undo it."
+            echo
+            echo "$fence"
+            cat shards.txt
+            echo "$fence"
+          } > shards-body.txt
+          open="$(ISSUE_TITLE="$title" gh issue list --state open --search "\"$title\" in:title" \
+                    --json number,title --jq '[.[] | select(.title == env.ISSUE_TITLE)][0].number // empty')"
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file shards-body.txt
+          else
+            gh issue create --title "$title" --body-file shards-body.txt
+          fi
       - name: Open an issue on failure
         if: always() && (steps.sync.outputs.code != '0' || steps.verify.outputs.code != '0')
         env:

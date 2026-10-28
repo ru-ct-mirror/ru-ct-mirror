@@ -31,8 +31,10 @@ a GitHub Actions job running outside Russia:
 5. records every distinct signed STH it has ever seen,
 6. checks that the STH the log served is not older than the log's own maximum
    merge delay, so an old STH replayed to hide new entries cannot pass,
-7. snapshots `ctlog.json` and fails loudly if a log key or merge delay changes
-   or a log appears that is not in `logs.json`,
+7. snapshots `ctlog.json`, adopts a new shard of a known operator from it,
+   retires a shard the list has dropped once every certificate in it has
+   expired, and fails loudly if a log key or merge delay changes or a log
+   appears that it cannot adopt,
 8. commits the result and summarises the names it just observed.
 
 If any check fails the evidence (both STHs, the proof, the entries that were
@@ -87,8 +89,11 @@ files alone.
 
 Operators and shards: `yandex/2022`–`2027` (`ct-agate.yandex.net`),
 `vk/2022`–`2027` (`ctlog*.mail.ru`), `digital-gov/2025`–`2027`
-(`*.ctlog.digital.gov.ru`). The Ministry's 2022–2024 shards no longer resolve
-in DNS; their keys are kept in `logs.json` as `disabled` for the record.
+(`*.ctlog.digital.gov.ru`). The Ministry's 2022–2025 shards no longer resolve
+in DNS; their keys are kept in `logs.json` as `disabled` for the record. A
+shard that leaves Yandex's list after every certificate in it has expired is
+disabled the same way, automatically: the mirror stops asking the log for it
+and keeps its final tree, which `verify` goes on checking.
 
 The tool that writes all of this is
 [ru-ct-mirror/ructmirror](https://github.com/ru-ct-mirror/ructmirror), and

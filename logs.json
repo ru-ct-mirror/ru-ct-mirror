@@ -1,5 +1,28 @@
 {
   "log_list_url": "https://browser-resources.s3.yandex.net/ctlog/ctlog.json",
+  "operators": {
+    "The Ministry of Digital Development and Communications": {
+      "operator": "digital-gov",
+      "tls": "russian-trusted",
+      "hosts": [
+        ".ctlog.digital.gov.ru"
+      ]
+    },
+    "VK LLC": {
+      "operator": "vk",
+      "tls": "system",
+      "hosts": [
+        ".mail.ru"
+      ]
+    },
+    "Yandex": {
+      "operator": "yandex",
+      "tls": "system",
+      "hosts": [
+        "ct-agate.yandex.net"
+      ]
+    }
+  },
   "logs": [
     {
       "operator": "yandex",

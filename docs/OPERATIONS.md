@@ -3,18 +3,54 @@
 ## Adding a shard
 
 New yearly shards appear in `ctlog.json` around November. The scheduled job
-then fails with `ALERT log list: log not in logs.json` until a maintainer adds
-the shard to `logs.json` by hand, copying `url`, `key`, `log_id` and `mmd`
-from `loglist/ctlog.json` and writing `key_source`. Then run it once locally
-and commit `logs.json` together with the new `data/` directory:
+adopts one by itself when all of these hold, and otherwise fails with
+`ALERT log list: log not in logs.json: … not adopted, <reason>`:
+
+- the list files it under an operator named in the `operators` block of
+  `logs.json` (keyed by the operator's name exactly as `ctlog.json` spells
+  it), which gives the shard's operator slug and TLS mode;
+- its URL is `https://` on one of that operator's `hosts` (a name, or a
+  suffix starting with a dot);
+- its state is qualified, usable or readonly;
+- it has a `temporal_interval`, whose start year becomes the shard name, and
+  no shard of that operator has that name yet;
+- `sha256(key) == log_id`;
+- the same list changes no key or MMD of a shard already in `logs.json`.
+
+Adoption writes the entry to `logs.json` with `key_source` naming the list
+version, mirrors the shard in the same run, commits both, and opens an issue
+titled **Log list change <date>**. To undo it, delete the entry and the
+`data/<operator>/<shard>/` directory, and stop the next run from adopting it
+again by narrowing that operator's `hosts` or removing the operator from
+`operators`; the shard then fails as an unknown log until it is resolved.
+
+For a shard the job will not adopt, add it to `logs.json` by hand, copying
+`url`, `key`, `log_id` and `mmd` from `loglist/ctlog.json` and writing
+`key_source`. Then run it once locally and commit `logs.json` together with
+the new `data/` directory:
 
 ```
 go build -C code -o ../ructmirror ./cmd/ructmirror
 ./ructmirror sync -only <operator>/<shard>
 ```
 
-A shard whose host disappears should be marked `"disabled": true` with a
-`note`; its data stays in the repository.
+## Retiring a shard
+
+`ctlog.json` lists only current shards. When it stops listing one, the job
+reads every entry the mirror holds for that shard and, if each certificate
+in it has expired, marks the shard `"disabled": true` with a `note` saying
+when and why. It is no longer asked for STHs; its data stays in the
+repository and `verify` still checks it. The change is committed with the
+run and reported in a **Log list change** issue. A shard with an entry whose
+certificate cannot be parsed is never retired this way.
+
+A dropped shard that still holds valid certificates stays enabled. If its
+host stops resolving, the **Sync error** issue carries a line saying so;
+check the log by hand from more than one network before marking it
+`"disabled": true` with a `note`, since a log that is gone for us only may be
+the split view this mirror exists to catch.
+
+To re-enable a retired shard, remove `disabled` and `note`.
 
 ## Updating the code
 
