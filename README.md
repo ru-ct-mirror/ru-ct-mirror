@@ -141,7 +141,10 @@ Each run also summarises itself. `ructmirror summary` reads the chunk files a
 run added — the only files a run ever adds — and writes the commit message for
 them: how many entries each shard gained, and the DNS names those entries
 carry, marking with `+` every name the mirror had never seen before. IDN names
-are shown in Unicode next to the stored form. The list is capped at 100 names;
+are shown in Unicode next to the stored form. Names are grouped by registrable
+domain, by the same rule the site uses; a domain shows at most 5 names, new
+ones first, and the rest is folded into one line such as
+`… and 93 other subdomains in *.tricolor.ru`. The list is capped at 200 names;
 `ructmirror domains` and the site always have the whole picture. So
 `git log` is a searchable feed of newly issued names, with no network and no
 site (see `docs/OPERATIONS.md`).

@@ -130,7 +130,7 @@ message. A run only ever adds chunks and never rewrites one, so the message is
 derived from the commit's own diff and anyone with a clone can recompute it:
 
 ```
-sync 2026-09-19T18:23:07Z: 14 entries, 9 names (3 new)
+sync 2026-09-19T18:23:07Z: 14 entries, 18 names (10 new)
 
 digital-gov/2026  [8745, 8749]   5 entries
 vk/2026           [6144, 6144]   1 entry
@@ -140,6 +140,12 @@ Names in the added chunks, + when new to this mirror:
 
 + api.gosuslugi.ru
   lk.gosuslugi.ru
++ tricolor.ru
++ *.tricolor.ru
++ account-cur.tricolor.ru
++ account-dev.tricolor.ru
++ bonus-cur.tricolor.ru
+  … and 10 other subdomains in *.tricolor.ru (3 new)
 + xn--d1aqf.xn--p1ai (дом.рф)
 ```
 
@@ -151,7 +157,16 @@ repository has the same effect, which is the other reason to think twice
 before doing it.
 
 The subject keeps the `sync <timestamp>` form, so `git log --grep='^sync [0-9]'`
-still selects exactly the automated commits. At most 100 names are listed;
+still selects exactly the automated commits.
+
+Names are grouped by registrable domain: the last two labels, or three when
+the last two are a shared suffix such as `gov.ru` or `spb.ru`. The rule and its
+suffix list are the ones the Pages site groups by (`GroupKey` in
+`code/internal/mirror/group.go`, `SUFFIXES` in `site/index.html`; keep the two
+in step). A domain lists at most 5 names: the domain itself and its wildcard
+first, then new names, then the rest, each in order. The others are folded
+into one `… and N other subdomains in *.domain` line that says how many of them
+are new. At most 200 names are listed in all, fold lines not counted;
 `ructmirror domains` and the Pages site have the rest.
 
 A commit whose message is only `sync <timestamp>`, with no body, is not a bug:
