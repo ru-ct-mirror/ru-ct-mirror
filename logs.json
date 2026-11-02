@@ -233,6 +233,39 @@
       "mmd": 86400,
       "tls": "russian-trusted",
       "key_source": "browser-resources.s3.yandex.net/ctlog/ctlog.json v1.229 (2026-08-12)"
+    },
+    {
+      "operator": "yandex",
+      "shard": "2028",
+      "description": "Yandex Agate-2028 log",
+      "url": "https://ct-agate.yandex.net/2028/",
+      "log_id": "nYCXSZDhqPChGY6U7RZGMJYWkFpiADSqb8PG2j91kzQ=",
+      "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE5Ii3h0tNdaKaKRTUmH2H5Y7YuR/Hbb4JBXcUi42K70YYdxyrxZoeRqfq/b5YdjP5jRyEw5UCmMVFh+fmlW1SRA==",
+      "mmd": 86400,
+      "tls": "system",
+      "key_source": "browser-resources.s3.yandex.net/ctlog/ctlog.json v1.240 (2026-10-28)"
+    },
+    {
+      "operator": "vk",
+      "shard": "2028",
+      "description": "VK 'NCA2028' Log",
+      "url": "https://ctlog2028.mail.ru/nca2028/",
+      "log_id": "2Ek/NmxuqZawoLscE33vNvIGsEF9nwMy1JgEP0tb/ow=",
+      "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEbo//qjVNI6wb4CMhTn0W0HoMpx6gIwmX29JrL5LbyZCPVxbgWaNofjnTfdececFSH3c0KsHx37obiqNCsP4qJQ==",
+      "mmd": 86400,
+      "tls": "system",
+      "key_source": "browser-resources.s3.yandex.net/ctlog/ctlog.json v1.240 (2026-10-28)"
+    },
+    {
+      "operator": "digital-gov",
+      "shard": "2028",
+      "description": "The Ministry of Digital Development and Communications '2028' Log",
+      "url": "https://28.ctlog.digital.gov.ru/2028/",
+      "log_id": "Isw4AXWeZ4AIDTrfEaUDUsO5WRYLezHCeJ9njHoxfo4=",
+      "key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXc1oqD79DIfkKMCW5OLD8vM8Kn3siTV+3ghIec+Zbf6/+cEtcXkl02VGl0dA4GnMSHSD2w33U9IZC2P3B6ZHiw==",
+      "mmd": 86400,
+      "tls": "russian-trusted",
+      "key_source": "browser-resources.s3.yandex.net/ctlog/ctlog.json v1.240 (2026-10-28)"
     }
   ]
 }
